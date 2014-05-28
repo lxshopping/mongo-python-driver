@@ -56,6 +56,18 @@ MAX_SUPPORTED_WIRE_VERSION = 2
 COMMAND_NOT_FOUND_CODES = (59, 13390, None)
 
 
+def partition_node(node):
+    """Split a host:port string into (host, int(port)) pair."""
+    host = node
+    port = 27017
+    idx = node.rfind(':')
+    if idx != -1:
+        host, port = node[:idx], int(node[idx + 1:])
+    if host.startswith('['):
+        host = host[1:-1]
+    return host, port
+
+
 def raise_config_error(key, dummy):
     """Raise ConfigurationError with the given key name."""
     raise ConfigurationError("Unknown option %s" % (key,))
