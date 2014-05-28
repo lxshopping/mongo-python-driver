@@ -223,10 +223,6 @@ def update_cluster_description(cd, sd):
             # ServerType is Unknown or RSGhost: did we just lose the primary?
             _check_has_primary(cd)
 
-    # No actions for ClusterType Unknown or Single.
-    elif cd.cluster_type == ClusterType.ReplicaSetWithPrimary:
-        _check_has_primary(cd)
-
 
 def _update_sharded(cd, sd):
     if sd.server_type != ServerType.Mongos:
