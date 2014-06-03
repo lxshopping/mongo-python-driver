@@ -66,6 +66,7 @@ class Cluster(object):
             self._update_servers()
 
     def select_server(self, selector, server_wait_time=5):
+        # TODO: should return the list of matches.
         """Return a random Server matching selector, or time out.
 
         Raises AutoReconnect after maxWaitTime with no matching server.
