@@ -173,6 +173,8 @@ def update_cluster_description(cd, sd):
     Called after attempting (successfully or not) to call ismaster on the
     server at sd.address.
     """
+    # We already have this ServerDescription, otherwise we wouldn't be
+    # monitoring it. Thus this is "replace" not "add".
     cd.replace_server_description(sd)
 
     server_type = sd.server_type
