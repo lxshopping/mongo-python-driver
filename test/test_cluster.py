@@ -125,7 +125,7 @@ class TestSingleServerCluster(unittest.TestCase):
             # Can't select a server while the only server is of type Unknown.
             self.assertRaises(
                 ConnectionFailure,
-                c.select_server, any_server_selector, server_wait_time=0)
+                c.select_servers, any_server_selector, server_wait_time=0)
 
             got_ismaster(c, address, ismaster_response)
 
@@ -133,8 +133,8 @@ class TestSingleServerCluster(unittest.TestCase):
             self.assertEqual(ClusterType.Single, c.description.cluster_type)
 
             # No matter whether the server is writable,
-            # select_server() returns it.
-            s = c.select_server(writable_server_selector)
+            # select_servers() returns it.
+            s = c.select_servers(writable_server_selector)[0]
             self.assertEqual(server_type, s.description.server_type)
 
     def test_unavailable_seed(self):
@@ -297,7 +297,7 @@ class TestMultiServerCluster(unittest.TestCase):
         self.assertEqual(c.description.min_wire_version, 1)
         self.assertEqual(c.description.max_wire_version, 5)
 
-        s = c.select_server(any_server_selector)
+        s = c.select_servers(any_server_selector)[0]
         self.assertEqual(s.description.min_wire_version, 1)
         self.assertEqual(s.description.max_wire_version, 5)
 
@@ -311,7 +311,7 @@ class TestMultiServerCluster(unittest.TestCase):
             'maxWireVersion': 12})
 
         try:
-            c.select_server(any_server_selector)
+            c.select_servers(any_server_selector)
         except ConfigurationError as e:
             # Error message should say which server failed and why.
             self.assertTrue('a:27017' in str(e))
@@ -323,7 +323,7 @@ class TestMultiServerCluster(unittest.TestCase):
         c = create_mock_cluster(seeds=['a', 'b'], set_name='rs')
 
         def write_batch_size():
-            s = c.select_server(writable_server_selector)
+            s = c.select_servers(writable_server_selector)[0]
             return s.description.max_write_batch_size
 
         got_ismaster(c, ('a', 27017), {

@@ -14,6 +14,8 @@
 
 """TODO: help string."""
 
+import random
+
 from bson.py3compat import (string_type)
 from pymongo import (helpers,
                      message,
@@ -72,7 +74,7 @@ class MongoClientNew(object):
             def selector(sds):
                 return [sd for sd in sds if sds.is_readable]
 
-        server = self._cluster.select_server(selector)
+        server = random.choice(self._cluster.select_servers(selector))
         raw_response = server.send_message_with_response(msg, request_id)
         response = helpers._unpack_response(raw_response)['data'][0]
         msg = "command %r failed: %%s" % spec

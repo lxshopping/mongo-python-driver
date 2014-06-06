@@ -14,7 +14,6 @@
 
 """Internal classes to monitor clusters of one or more servers."""
 
-import random
 import threading
 import time
 
@@ -65,11 +64,10 @@ class Cluster(object):
             self._opened = True
             self._update_servers()
 
-    def select_server(self, selector, server_wait_time=5):
-        # TODO: should return the list of matches.
-        """Return a random Server matching selector, or time out.
+    def select_servers(self, selector, server_wait_time=5):
+        """Return all Servers matching selector, or time out.
 
-        Raises AutoReconnect after maxWaitTime with no matching server.
+        Raises AutoReconnect after maxWaitTime with no matching servers.
         """
         with self._lock:
             self._cluster_description.check_compatible()
@@ -82,8 +80,8 @@ class Cluster(object):
 
             while True:
                 if server_descriptions:
-                    sd = random.choice(server_descriptions)
-                    return self.get_server_by_address(sd.address)
+                    return [self.get_server_by_address(sd.address)
+                            for sd in server_descriptions]
 
                 # No suitable servers.
                 if now > end_time:
@@ -127,7 +125,7 @@ class Cluster(object):
             self._cluster_description = cd
             self._update_servers()
 
-            # Wake waiters in select_server().
+            # Wake waiters in select_servers().
             self._condition.notify_all()
 
     def get_server_by_address(self, address):
