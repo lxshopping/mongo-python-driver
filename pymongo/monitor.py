@@ -26,42 +26,37 @@ from pymongo.server_description import (parse_ismaster_response,
                                         ServerDescription)
 
 
-class Monitor(object):
-    def __init__(self, address, cluster, pool, condition_class):
+class Monitor(threading.Thread):
+    def __init__(self, address, cluster, pool):
         """Pass a (host, port) pair, a Cluster, and a Pool.
 
         The Cluster is weakly referenced. The Pool must be exclusive to this
         Monitor.
         """
+        super(Monitor, self).__init__()
+        self.daemon = True  # Python 2.6's way to do setDaemon(True).
         self._address = address
         self._cluster = weakref.proxy(cluster)
         self._pool = pool
         self._lock = threading.Lock()
-        self._condition = condition_class(self._lock)
-
+        self._condition = threading.Condition(self._lock)
         self._stopped = False
-        self._thread = None
 
     def open(self):
-        self._thread = threading.Thread(target=self._run)
-        self._thread.setDaemon(True)
-        self._thread.start()
+        self.start()
 
     def close(self):
         self._stopped = True
         self._pool.reset()
-        self.request_check()
 
-    def join(self):
-        """Internal method, helps avoid exceptions on interpreter shutdown."""
-        if self._thread:
-            self._thread.join()
+        # Awake the thread so it notices that _stopped is True.
+        self.request_check()
 
     def request_check(self):
         with self._lock:
             self._condition.notify()
 
-    def _run(self):
+    def run(self):
         # TODO: minHeartbeatFrequencyMS.
         while not self._stopped:
             sock_info = None

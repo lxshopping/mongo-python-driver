@@ -150,8 +150,7 @@ class Cluster(object):
                 m = self._monitor_class(
                     address,
                     self,
-                    self._create_pool(address),
-                    self._condition_class)
+                    self._create_pool(address))
 
                 s = Server(sd, self._create_pool(address), m)
                 self._servers[address] = s

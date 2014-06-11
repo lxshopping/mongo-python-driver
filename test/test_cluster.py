@@ -40,7 +40,7 @@ class MockPool(object):
 
 
 class MockMonitor(object):
-    def __init__(self, address, cluster, pool, condition_class):
+    def __init__(self, address, cluster, pool):
         self._address = address
         self._cluster = cluster
 
