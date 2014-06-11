@@ -206,6 +206,7 @@ class TestMultiServerCluster(unittest.TestCase):
             'msg': 'isdbgrid'})
 
         self.assertEqual(ServerType.Mongos, get_type(c, 'a'))
+        self.assertEqual(ServerType.Mongos, get_type(c, 'b'))
 
     def test_rs_discovery(self):
         c = create_mock_cluster(set_name='rs')
