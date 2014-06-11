@@ -15,6 +15,7 @@
 """TODO: help string."""
 
 import random
+import threading
 
 from bson.py3compat import (string_type)
 from pymongo import (helpers,
@@ -22,7 +23,8 @@ from pymongo import (helpers,
                      monitor,
                      pool,
                      uri_parser)
-from pymongo.cluster import create_cluster
+from pymongo.cluster import Cluster
+from pymongo.cluster_description import ClusterDescription
 from pymongo.errors import (ConfigurationError)
 from pymongo.settings import ClusterSettings
 
@@ -52,10 +54,16 @@ class MongoClientNew(object):
         # pool_class, document_class, pool options, condition_class,
         # default database.
 
-        self._cluster = create_cluster(
-            self._settings,
+        cluster_description = ClusterDescription(
+            self._settings.get_cluster_type(),
+            self._settings.get_server_descriptions(),
+            self._settings.set_name)
+
+        self._cluster = Cluster(
+            cluster_description,
             pool_class=pool.Pool,
-            monitor_class=monitor.Monitor)
+            monitor_class=monitor.Monitor,
+            condition_class=threading.Condition)
 
         self._cluster.open()
 

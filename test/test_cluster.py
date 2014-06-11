@@ -15,12 +15,13 @@
 """Test the cluster module."""
 
 import sys
+import threading
+from pymongo.cluster import Cluster
 
 sys.path[0:0] = [""]
 
 from pymongo import common
-from pymongo.cluster import create_cluster
-from pymongo.cluster_description import ClusterType
+from pymongo.cluster_description import ClusterType, ClusterDescription
 from pymongo.errors import ConfigurationError, ConnectionFailure
 from pymongo.settings import ClusterSettings
 from pymongo.server_description import (ServerDescription,
@@ -57,10 +58,17 @@ address = ('a', 27017)
 
 def create_mock_cluster(seeds=None, set_name=None):
     partitioned_seeds = map(common.partition_node, seeds or ['a'])
-    c = create_cluster(
-        ClusterSettings(partitioned_seeds, set_name=set_name),
+    settings = ClusterSettings(partitioned_seeds, set_name=set_name)
+    cluster_description = ClusterDescription(
+        settings.get_cluster_type(),
+        settings.get_server_descriptions(),
+        settings.set_name)
+
+    c = Cluster(
+        cluster_description,
         pool_class=MockPool,
-        monitor_class=MockMonitor)
+        monitor_class=MockMonitor,
+        condition_class=threading.Condition)
 
     c.open()
     return c
