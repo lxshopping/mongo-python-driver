@@ -127,4 +127,3 @@ def shutdown_monitors():
             monitor.join()
 
 atexit.register(shutdown_monitors)
-
