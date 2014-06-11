@@ -13,6 +13,8 @@
 # permissions and limitations under the License.
 
 """Represent MongoClient's configuration."""
+from pymongo.cluster_description import ClusterType
+from pymongo.server_description import ServerDescription
 
 
 class ClusterSettings(object):
@@ -39,6 +41,17 @@ class ClusterSettings(object):
         True if there is one seed and no set_name.
         """
         return self._direct
+
+    def get_cluster_type(self):
+        if self.direct:
+            return ClusterType.Single
+        elif self.set_name is not None:
+            return ClusterType.ReplicaSetNoPrimary
+        else:
+            return ClusterType.Unknown
+
+    def get_server_descriptions(self):
+        return [ServerDescription(address) for address in self.seeds]
 
 
 class SocketSettings(object):

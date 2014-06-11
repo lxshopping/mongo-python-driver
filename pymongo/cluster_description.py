@@ -19,19 +19,6 @@ from pymongo.errors import InvalidOperation, ConfigurationError
 from pymongo.server_description import ServerDescription, ServerType
 
 
-def create_cluster_description(settings):
-    """Create a Cluster from ClusterSettings."""
-    if settings.direct:
-        cluster_type = ClusterType.Single
-    elif settings.set_name is not None:
-        cluster_type = ClusterType.ReplicaSetNoPrimary
-    else:
-        cluster_type = ClusterType.Unknown
-
-    servers = [ServerDescription(address) for address in settings.seeds]
-    return ClusterDescription(cluster_type, servers, settings.set_name)
-
-
 class ClusterType:
     class Single: pass
     class ReplicaSetNoPrimary: pass

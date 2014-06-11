@@ -17,9 +17,8 @@
 import threading
 import time
 
-from pymongo.cluster_description import (create_cluster_description,
-                                         update_cluster_description,
-                                         ClusterType)
+from pymongo.cluster_description import (update_cluster_description,
+                                         ClusterType, ClusterDescription)
 from pymongo.errors import InvalidOperation, ConnectionFailure
 from pymongo.server import Server
 
@@ -29,7 +28,11 @@ def create_cluster(
     pool_class,
     monitor_class
 ):
-    cluster_description = create_cluster_description(settings)
+    cluster_description = ClusterDescription(
+        settings.get_cluster_type(),
+        settings.get_server_descriptions(),
+        settings.set_name)
+
     return Cluster(
         cluster_description,
         pool_class=pool_class,
