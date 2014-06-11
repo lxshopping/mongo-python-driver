@@ -105,9 +105,9 @@ class Cluster(object):
                 # the primary that didn't include this server.
                 return
 
-            cd = self._cluster_description.copy()
-            update_cluster_description(cd, server_description)
-            cd.freeze()
+            cd = update_cluster_description(
+                self._cluster_description, server_description)
+
             self._cluster_description = cd
             self._update_servers()
 
@@ -145,8 +145,7 @@ class Cluster(object):
 
         Hold the lock while calling this.
         """
-        for sd in self._cluster_description.server_descriptions:
-            address = sd.address
+        for address, sd in self._cluster_description.server_descriptions:
             if address not in self._servers:
                 m = self._monitor_class(
                     address,
