@@ -22,8 +22,9 @@ import time
 
 from pymongo import helpers, message
 from pymongo.errors import OperationFailure
-from pymongo.server_description import (parse_ismaster_response,
-                                        ServerDescription)
+from pymongo.ismaster import IsMasterResponse
+from pymongo.read_preferences import MovingAverage
+from pymongo.server_description import ServerDescription
 
 
 class Monitor(threading.Thread):
@@ -76,13 +77,13 @@ class Monitor(threading.Thread):
 
                     round_trip_time = time.time() - start
                     result = helpers._unpack_response(raw_response)
-                    response = result['data'][0]
 
                     # TODO: average RTTs.
-                    sd = parse_ismaster_response(
+                    ismaster_response = IsMasterResponse(result['data'][0])
+                    sd = ServerDescription(
                         self._address,
-                        response,
-                        round_trip_time)
+                        ismaster_response,
+                        MovingAverage([round_trip_time]))
 
                     self._cluster.on_change(sd)
                 except (socket.error, OperationFailure):

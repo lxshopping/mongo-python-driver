@@ -16,18 +16,19 @@
 
 import sys
 import threading
-from pymongo.cluster import Cluster
 
 sys.path[0:0] = [""]
 
 from pymongo import common
+from pymongo.cluster import Cluster
 from pymongo.cluster_description import ClusterType, ClusterDescription
 from pymongo.errors import ConfigurationError, ConnectionFailure
-from pymongo.settings import ClusterSettings
-from pymongo.server_description import (ServerDescription,
-                                        parse_ismaster_response, ServerType)
+from pymongo.ismaster import IsMasterResponse
+from pymongo.read_preferences import MovingAverage
+from pymongo.server_description import ServerDescription, ServerType
 from pymongo.server_selectors import (any_server_selector,
                                       writable_server_selector)
+from pymongo.settings import ClusterSettings
 from test import unittest
 
 
@@ -75,8 +76,10 @@ def create_mock_cluster(seeds=None, set_name=None):
 
 
 def got_ismaster(cluster, server_address, ismaster_response):
-    server_description = parse_ismaster_response(
-        server_address, ismaster_response, 0)
+    server_description = ServerDescription(
+        server_address,
+        IsMasterResponse(ismaster_response),
+        MovingAverage([0]))
 
     cluster.on_change(server_description)
 
@@ -281,8 +284,8 @@ class TestMultiServerCluster(unittest.TestCase):
 
     def test_wire_version(self):
         c = create_mock_cluster(set_name='rs')
-        self.assertEqual(c.description.min_wire_version, None)
-        self.assertEqual(c.description.max_wire_version, None)
+        self.assertEqual(c.description.min_wire_version, 0)
+        self.assertEqual(c.description.max_wire_version, 0)
         c.description.check_compatible()  # No error.
 
         got_ismaster(c, address, {

@@ -18,11 +18,17 @@ import sys
 
 sys.path[0:0] = [""]
 
-from pymongo.server_description import (ServerDescription, ServerType,
-                                        parse_ismaster_response)
+from pymongo.ismaster import IsMasterResponse
+from pymongo.read_preferences import MovingAverage
+from pymongo.server_description import ServerDescription, ServerType
 from test import unittest
 
 address = ('localhost', 27017)
+
+
+def parse_ismaster_response(doc):
+    ismaster_response = IsMasterResponse(doc)
+    return ServerDescription(address, ismaster_response)
 
 
 class TestServerDescription(unittest.TestCase):
@@ -32,78 +38,67 @@ class TestServerDescription(unittest.TestCase):
         self.assertEqual(ServerType.Unknown, s.server_type)
 
     def test_mongos(self):
-        s = parse_ismaster_response(address, {'ok': 1, 'msg': 'isdbgrid'}, 0)
+        s = parse_ismaster_response({'ok': 1, 'msg': 'isdbgrid'})
         self.assertEqual(ServerType.Mongos, s.server_type)
 
     def test_primary(self):
         s = parse_ismaster_response(
-            address, {'ok': 1, 'ismaster': True, 'setName': 'rs'}, 0)
+            {'ok': 1, 'ismaster': True, 'setName': 'rs'})
 
         self.assertEqual(ServerType.RSPrimary, s.server_type)
 
     def test_secondary(self):
         s = parse_ismaster_response(
-            address,
-            {'ok': 1, 'ismaster': False, 'secondary': True, 'setName': 'rs'},
-            0)
+            {'ok': 1, 'ismaster': False, 'secondary': True, 'setName': 'rs'})
 
         self.assertEqual(ServerType.RSSecondary, s.server_type)
 
     def test_arbiter(self):
         s = parse_ismaster_response(
-            address,
-            {'ok': 1, 'ismaster': False, 'arbiterOnly': True, 'setName': 'rs'},
-            0)
+            {'ok': 1, 'ismaster': False, 'arbiterOnly': True, 'setName': 'rs'})
 
         self.assertEqual(ServerType.RSArbiter, s.server_type)
 
     def test_other(self):
         s = parse_ismaster_response(
-            address, {'ok': 1, 'ismaster': False, 'setName': 'rs'}, 0)
+            {'ok': 1, 'ismaster': False, 'setName': 'rs'})
 
         self.assertEqual(ServerType.RSOther, s.server_type)
 
-        s = parse_ismaster_response(
-            address,
-            {
-                'ok': 1,
-                'ismaster': False,
-                'secondary': True,
-                'hidden': True,
-                'setName': 'rs'},
-            0)
+        s = parse_ismaster_response({
+            'ok': 1,
+            'ismaster': False,
+            'secondary': True,
+            'hidden': True,
+            'setName': 'rs'})
 
         self.assertEqual(ServerType.RSOther, s.server_type)
 
     def test_ghost(self):
-        s = parse_ismaster_response(
-            address, {'ok': 1, 'isreplicaset': True}, 0)
+        s = parse_ismaster_response({'ok': 1, 'isreplicaset': True})
 
         self.assertEqual(ServerType.RSGhost, s.server_type)
 
     def test_standalone(self):
-        s = parse_ismaster_response(address, {'ok': 1, 'ismaster': True}, 0)
+        s = parse_ismaster_response({'ok': 1, 'ismaster': True})
         self.assertEqual(ServerType.Standalone, s.server_type)
 
         # Mongod started with --slave.
-        s = parse_ismaster_response(address, {'ok': 1, 'ismaster': False}, 0)
+        s = parse_ismaster_response({'ok': 1, 'ismaster': False})
         self.assertEqual(ServerType.Standalone, s.server_type)
 
     def test_ok_false(self):
-        s = parse_ismaster_response(address, {'ok': 0, 'ismaster': True}, 0)
+        s = parse_ismaster_response({'ok': 0, 'ismaster': True})
         self.assertEqual(ServerType.Unknown, s.server_type)
 
     def test_all_hosts(self):
-        s = parse_ismaster_response(
-            address,
-            {
-                'ok': 1,
-                'ismaster': True,
-                'hosts': ['a'],
-                'passives': ['b:27018'],
-                'arbiters': ['c']
-            },
-            0)
+        s = parse_ismaster_response({
+            'ok': 1,
+            'ismaster': True,
+            'hosts': ['a'],
+            'passives': ['b:27018'],
+            'arbiters': ['c']
+        })
 
         self.assertEqual(
             [('a', 27017), ('b', 27018), ('c', 27017)],
@@ -111,14 +106,14 @@ class TestServerDescription(unittest.TestCase):
 
     def test_round_trip_time(self):
         response = {'ok': 1, 'ismaster': True}
-        s = parse_ismaster_response(address, response, round_trip_time=1)
+        s = ServerDescription(
+            address,
+            IsMasterResponse(response),
+            MovingAverage([1]))
+
         self.assertEqual(1, s.round_trip_time)
         rtts = s.round_trip_times
-        s2 = parse_ismaster_response(
-            address, response, round_trip_time=3, round_trip_times=rtts)
-
-        # Average of 1 and 3.
-        self.assertEqual(2, s2.round_trip_time)
+        self.assertEqual([1], rtts.samples)
 
 
 if __name__ == "__main__":

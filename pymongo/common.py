@@ -38,7 +38,7 @@ if sys.platform.startswith('java'):
 
 # Defaults until we connect to a server and get updated limits.
 MAX_BSON_SIZE = 16 * (1024 ** 2)
-MAX_MESSAGE_SIZE = 2 * MAX_BSON_SIZE
+MAX_MESSAGE_SIZE = 2 * MAX_BSON_SIZE  # TODO: remove.
 MIN_WIRE_VERSION = 0
 MAX_WIRE_VERSION = 0
 MAX_WRITE_BATCH_SIZE = 1000

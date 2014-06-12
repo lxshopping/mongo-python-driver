@@ -14,86 +14,8 @@
 
 """Represent one server in the cluster."""
 
-import itertools
-
 from pymongo import common
-from pymongo.read_preferences import MovingAverage
-
-
-class ServerType:
-    class Unknown: pass
-    class Mongos: pass
-    class RSPrimary: pass
-    class RSSecondary: pass
-    class RSArbiter: pass
-    class RSOther: pass
-    class RSGhost: pass
-    class Standalone: pass
-
-
-def get_server_type(ismaster_response):
-    if not ismaster_response.get('ok'):
-        return ServerType.Unknown
-    
-    if ismaster_response.get('isreplicaset'):
-        return ServerType.RSGhost
-    elif ismaster_response.get('setName'):
-        if ismaster_response.get('hidden'):
-            return ServerType.RSOther
-        elif ismaster_response.get('ismaster'):
-            return ServerType.RSPrimary
-        elif ismaster_response.get('secondary'):
-            return ServerType.RSSecondary
-        elif ismaster_response.get('arbiterOnly'):
-            return ServerType.RSArbiter
-        else:
-            return ServerType.RSOther
-    elif ismaster_response.get('msg') == 'isdbgrid':
-        return ServerType.Mongos
-    else:
-        return ServerType.Standalone
-
-
-def parse_ismaster_response(
-        address,
-        response,
-        round_trip_time,
-        round_trip_times=None):
-
-    server_type = get_server_type(response)
-    max_bson_size = response.get('maxBsonObjectSize', common.MAX_BSON_SIZE),
-    all_hosts = map(common.partition_node, itertools.chain(
-        response.get('hosts', []),
-        response.get('passives', []),
-        response.get('arbiters', [])))
-
-    if round_trip_times is not None:
-        rtt_avg = round_trip_times.clone_with(round_trip_time)
-    else:
-        rtt_avg = MovingAverage([round_trip_time])
-
-    if response.get('primary'):
-        primary = common.partition_node(response['primary'])
-    else:
-        primary = None
-
-    return ServerDescription(
-        address,
-        server_type=server_type,
-        round_trip_times=rtt_avg,
-        all_hosts=all_hosts,
-        tags=response.get('tags', {}),
-        set_name=response.get('setName'),
-        primary=primary,
-        max_bson_size=max_bson_size,
-        max_message_size=response.get(
-            'maxMessageSizeBytes', 2 * max_bson_size),
-        max_write_batch_size=response.get(
-            'maxWriteBatchSize', common.MAX_WRITE_BATCH_SIZE),
-        min_wire_version=response.get(
-            'minWireVersion', common.MIN_WIRE_VERSION),
-        max_wire_version=response.get(
-            'maxWireVersion', common.MAX_WIRE_VERSION))
+from pymongo.ismaster import IsMasterResponse, ServerType
 
 
 class ServerDescription(object):
@@ -101,45 +23,30 @@ class ServerDescription(object):
 
     :Parameters:
       - `address`: A (host, port) pair
-      - `server_type`: Optional ServerType
-      - `round_trip_time`: Optional MovingAverage
-      - `ismaster_response`: Optional dict, MongoDB's ismaster response
+      - `round_trip_times`: Optional MovingAverage
+      - `ismaster_response`: Optional IsMasterResponse
     """
     def __init__(
             self,
             address,
-            server_type=ServerType.Unknown,
-            round_trip_times=None,
-            all_hosts=None,
-            tags=None,
-            set_name=None,
-            primary=None,
-            max_bson_size=None,
-            max_message_size=None,
-            max_write_batch_size=None,
-            min_wire_version=None,
-            max_wire_version=None):
+            ismaster_response=None,
+            round_trip_times=None):
 
         self._address = address
-        self._server_type = server_type
-        self._round_trip_times = round_trip_times
-        self._all_hosts = all_hosts
-        self._tags = tags
-        self._set_name = set_name
-        self._primary = primary
-        self._max_bson_size = max_bson_size
-        self._max_message_size = max_message_size
-        self._max_write_batch_size = max_write_batch_size
-        self._min_wire_version = min_wire_version
-        self._max_wire_version = max_wire_version
+        if ismaster_response:
+            self._ismaster_response = ismaster_response
+        else:
+            self._ismaster_response = IsMasterResponse({})
 
-        self._is_writable = self._server_type in (
+        self._round_trip_times = round_trip_times
+        self._is_writable = self.server_type in (
             ServerType.RSPrimary,
             ServerType.Standalone,
             ServerType.Mongos)
 
-        self._is_readable = (self._server_type == ServerType.RSSecondary
-                             or self._is_writable)
+        self._is_readable = (
+            self.server_type == ServerType.RSSecondary
+            or self._is_writable)
 
     @property
     def address(self):
@@ -147,59 +54,59 @@ class ServerDescription(object):
 
     @property
     def server_type(self):
-        return self._server_type
+        return self._ismaster_response.server_type
 
     @property
     def round_trip_times(self):
-        return self._round_trip_times
-
-    @property
-    def all_hosts(self):
-        """Hosts, passives, and arbiters known to this server."""
-        return self._all_hosts
-
-    @property
-    def tags(self):
-        return self._tags
-
-    @property
-    def set_name(self):
-        return self._set_name
-
-    @property
-    def primary(self):
-        """This server's opinion of who the primary is, if any."""
-        return self._primary
-
-    @property
-    def max_bson_size(self):
-        return self._max_bson_size
-
-    @property
-    def max_message_size(self):
-        return self._max_message_size
-
-    @property
-    def max_write_batch_size(self):
-        return self._max_write_batch_size
-
-    @property
-    def min_wire_version(self):
-        return self._min_wire_version
-
-    @property
-    def max_wire_version(self):
-        return self._max_wire_version
-
-    @property
-    def round_trip_times(self):
-        """A MovingAverage."""
+        """A MovingAverage or None."""
         return self._round_trip_times
 
     @property
     def round_trip_time(self):
         """The current average duration."""
         return self._round_trip_times.get()
+
+    @property
+    def all_hosts(self):
+        """Hosts, passives, and arbiters known to this server."""
+        return self._ismaster_response.all_hosts
+
+    @property
+    def tags(self):
+        return self._ismaster_response.tags
+
+    @property
+    def set_name(self):
+        return self._ismaster_response.set_name
+
+    @property
+    def primary(self):
+        """This server's opinion of who the primary is, if any."""
+        return self._ismaster_response.primary
+
+    @property
+    def max_bson_size(self):
+        return self._ismaster_response.max_bson_size or common.MAX_BSON_SIZE
+
+    @property
+    def max_message_size(self):
+        return (self._ismaster_response.max_message_size
+                or 2 * self.max_bson_size)
+
+    @property
+    def max_write_batch_size(self):
+        return (self._ismaster_response.max_write_batch_size
+                or common.MAX_WRITE_BATCH_SIZE)
+
+    @property
+    def min_wire_version(self):
+        return (self._ismaster_response.min_wire_version
+                or common.MIN_WIRE_VERSION)
+
+    @property
+    def max_wire_version(self):
+        return (self._ismaster_response.max_wire_version
+                or common.MAX_WIRE_VERSION)
 
     @property
     def is_writable(self):
@@ -211,4 +118,4 @@ class ServerDescription(object):
 
     @property
     def is_server_type_known(self):
-        return self._server_type != ServerType.Unknown
+        return self.server_type != ServerType.Unknown
