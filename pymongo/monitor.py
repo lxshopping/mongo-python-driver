@@ -21,7 +21,6 @@ import weakref
 import time
 
 from pymongo import helpers, message
-from pymongo.errors import OperationFailure
 from pymongo.ismaster import IsMaster
 from pymongo.read_preferences import MovingAverage
 from pymongo.server_description import ServerDescription
@@ -52,9 +51,10 @@ class Monitor(threading.Thread):
         self._address = address
         self._cluster = weakref.proxy(cluster)
         self._pool = pool
-        self._call_ismaster = call_ismaster_fn
+        self._call_ismaster_fn = call_ismaster_fn
         self._lock = threading.Lock()
         self._condition = threading.Condition(self._lock)
+        self._succeeded = False
         self._stopped = False
 
     def open(self):
@@ -74,41 +74,66 @@ class Monitor(threading.Thread):
     def run(self):
         # TODO: minHeartbeatFrequencyMS.
         while not self._stopped:
-            sock_info = None
             try:
-                try:
-                    # TODO: a "with" statement.
-                    sock_info = self._pool.get_socket()
-
-                    # TODO: monotonic time.
-                    start = time.time()
-                    ismaster_response = self._call_ismaster(sock_info)
-                    round_trip_time = time.time() - start
-
-                    # TODO: average RTTs.
-                    sd = ServerDescription(
-                        self._address,
-                        ismaster_response,
-                        MovingAverage([round_trip_time]))
-
-                    self._cluster.on_change(sd)
-                except (socket.error, OperationFailure):
-                    # TODO: try once more if ServerType isn't Unknown.
-                    self._pool.maybe_return_socket(sock_info)
-
-                    # Set ServerType to Unknown.
-                    sd = ServerDescription(self._address)
-                    self._cluster.on_change(sd)
-
+                server_description = self._call_ismaster_with_retry()
+                self._cluster.on_change(server_description)
             except weakref.ReferenceError:
                 # Cluster was garbage collected.
                 self.close()
-
             else:
                 # TODO: heartbeatFrequencyMS.
                 with self._lock:
                     self._condition.wait(5)
 
+    def _call_ismaster_with_retry(self):
+        # According to the spec, if an ismaster call fails we reset the
+        # server's pool. If a server was once connected, change its type
+        # to Unknown only after retrying once.
+        retry = self._succeeded
+        server_description = self._call_ismaster_once()
+        if server_description:
+            self._succeeded = True
+            return server_description
+        else:
+            self._cluster.reset_pool(self._address)
+            if retry:
+                server_description = self._call_ismaster_once()
+                if server_description:
+                    self._succeeded = True
+                    return server_description
+
+        self._succeeded = False
+
+        # ServerType defaults to Unknown.
+        return ServerDescription(self._address)
+
+    def _call_ismaster_once(self):
+        try:
+            sock_info = self._pool.get_socket()
+        except socket.error:
+            return None
+
+        try:
+            # TODO: monotonic time.
+            start = time.time()
+            ismaster_response = self._call_ismaster_fn(sock_info)
+            round_trip_time = time.time() - start
+
+            # TODO: average RTTs.
+            sd = ServerDescription(
+                self._address,
+                ismaster_response,
+                MovingAverage([round_trip_time]))
+
+            return sd
+        except socket.error:
+            sock_info.close()
+            return None
+        except Exception:
+            # TODO: This is unexpected. Log.
+            return None
+        finally:
+            self._pool.maybe_return_socket(sock_info)
 
 MONITORS = set()
 

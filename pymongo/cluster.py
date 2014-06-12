@@ -20,7 +20,6 @@ import time
 from pymongo.cluster_description import (update_cluster_description,
                                          ClusterType)
 from pymongo.errors import InvalidOperation, ConnectionFailure
-from pymongo.ismaster import ServerType
 from pymongo.server import Server
 
 
@@ -131,6 +130,12 @@ class Cluster(object):
             self._request_check_all()
             self._condition.wait(wait_time)
 
+    def reset_pool(self, address):
+        with self._lock:
+            s = self._servers.get(address)
+            if s:
+                s.pool.reset()
+
     @property
     def description(self):
         return self._cluster_description
@@ -163,13 +168,7 @@ class Cluster(object):
                 self._servers[address] = s
                 s.open()
             else:
-                server = self._servers[address]
-                server.description = sd
-                if sd.server_type == ServerType.Unknown:
-                    # If the server is newly disconnected, clear its pool.
-                    # If it was already disconnected, there's no harm
-                    # resetting the pool again.
-                    server.pool.reset()
+                self._servers[address].description = sd
 
         for address, server in list(self._servers.items()):
             if not self._cluster_description.has_server(address):

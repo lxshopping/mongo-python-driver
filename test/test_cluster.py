@@ -36,13 +36,18 @@ from pymongo.settings import ClusterSettings
 from test import unittest
 
 
+class MockSocketInfo(object):
+    def close(self):
+        pass
+
+
 class MockPool(object):
     def __init__(self, *args, **kwargs):
         self.pool_id = 0
         self._lock = threading.Lock()
 
     def get_socket(self):
-        return 'fake socket'
+        return MockSocketInfo()
 
     def maybe_return_socket(self, _):
         pass
@@ -384,12 +389,25 @@ class TestClusterErrors(unittest.TestCase):
     # Errors when calling ismaster.
 
     def test_pool_reset(self):
-        # First ismaster call will succeed, second raises socket error.
+        def call_ismaster(_):
+            raise socket.error()
+
+        monitor_class = partial(Monitor, call_ismaster_fn=call_ismaster)
+        c = create_mock_cluster(monitor_class=monitor_class)
+        s = c.get_server_by_address(address)
+        pool_id = s.pool.pool_id
+
+        # Pool is reset by ismaster failure.
+        c.request_check_all()
+        self.assertNotEqual(pool_id, s.pool.pool_id)
+
+    def test_ismaster_retry(self):
+        # ismaster succeeds at first, then raises socket error, then succeeds.
         self.ismaster_count = 0
 
         def call_ismaster(_):
             self.ismaster_count += 1
-            if self.ismaster_count == 1:
+            if self.ismaster_count in (1, 3):
                 return IsMaster({'ok': 1})
             else:
                 raise socket.error()
@@ -397,21 +415,15 @@ class TestClusterErrors(unittest.TestCase):
         monitor_class = partial(Monitor, call_ismaster_fn=call_ismaster)
         c = create_mock_cluster(monitor_class=monitor_class)
 
-        # First ismaster call.
-        s = c.select_servers(any_server_selector)[0]
+        # Await first ismaster call.
+        s = c.select_servers(writable_server_selector)[0]
+        self.assertEqual(1, self.ismaster_count)
         self.assertEqual(ServerType.Standalone, s.description.server_type)
-        pool_id = s.pool.pool_id
 
-        # Trigger second ismaster call.
+        # Second ismaster call, then immediately the third.
         c.request_check_all()
-
-        # Pool was reset by failure.
-        self.assertNotEqual(pool_id, s.pool.pool_id)
-
-        # No server available.
-        self.assertRaises(
-            ConnectionFailure,
-            c.select_servers, any_server_selector, server_wait_time=0)
+        self.assertEqual(3, self.ismaster_count)
+        self.assertEqual(ServerType.Standalone, get_type(c, 'a'))
 
 
 if __name__ == "__main__":
