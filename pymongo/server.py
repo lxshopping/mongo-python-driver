@@ -54,6 +54,10 @@ class Server(object):
         assert server_description.address == self._description.address
         self._description = server_description
 
+    @property
+    def pool(self):
+        return self._pool
+
     def __repr__(self):
         d = self._description
         return '<Server "%s:%s" %s>' % (

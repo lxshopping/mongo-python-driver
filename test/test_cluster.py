@@ -15,15 +15,19 @@
 """Test the cluster module."""
 
 import sys
-import threading
 
 sys.path[0:0] = [""]
+
+import socket
+import threading
+from functools import partial
 
 from pymongo import common
 from pymongo.cluster import Cluster
 from pymongo.cluster_description import ClusterType, ClusterDescription
 from pymongo.errors import ConfigurationError, ConnectionFailure
 from pymongo.ismaster import IsMaster
+from pymongo.monitor import Monitor
 from pymongo.read_preferences import MovingAverage
 from pymongo.server_description import ServerDescription, ServerType
 from pymongo.server_selectors import (any_server_selector,
@@ -34,10 +38,18 @@ from test import unittest
 
 class MockPool(object):
     def __init__(self, *args, **kwargs):
+        self.pool_id = 0
+        self._lock = threading.Lock()
+
+    def get_socket(self):
+        return 'fake socket'
+
+    def maybe_return_socket(self, _):
         pass
 
     def reset(self):
-        pass
+        with self._lock:
+            self.pool_id += 1
 
 
 class MockMonitor(object):
@@ -54,10 +66,11 @@ class MockMonitor(object):
     def close(self):
         pass
 
+
 address = ('a', 27017)
 
 
-def create_mock_cluster(seeds=None, set_name=None):
+def create_mock_cluster(seeds=None, set_name=None, monitor_class=MockMonitor):
     partitioned_seeds = map(common.partition_node, seeds or ['a'])
     settings = ClusterSettings(partitioned_seeds, set_name=set_name)
     cluster_description = ClusterDescription(
@@ -68,7 +81,7 @@ def create_mock_cluster(seeds=None, set_name=None):
     c = Cluster(
         cluster_description,
         pool_class=MockPool,
-        monitor_class=MockMonitor,
+        monitor_class=monitor_class,
         condition_class=threading.Condition)
 
     c.open()
@@ -365,6 +378,40 @@ class TestMultiServerCluster(unittest.TestCase):
             'maxWriteBatchSize': 2})
 
         self.assertEqual(2, write_batch_size())
+
+
+class TestClusterErrors(unittest.TestCase):
+    # Errors when calling ismaster.
+
+    def test_pool_reset(self):
+        # First ismaster call will succeed, second raises socket error.
+        self.ismaster_count = 0
+
+        def call_ismaster(_):
+            self.ismaster_count += 1
+            if self.ismaster_count == 1:
+                return IsMaster({'ok': 1})
+            else:
+                raise socket.error()
+
+        monitor_class = partial(Monitor, call_ismaster_fn=call_ismaster)
+        c = create_mock_cluster(monitor_class=monitor_class)
+
+        # First ismaster call.
+        s = c.select_servers(any_server_selector)[0]
+        self.assertEqual(ServerType.Standalone, s.description.server_type)
+        pool_id = s.pool.pool_id
+
+        # Trigger second ismaster call.
+        c.request_check_all()
+
+        # Pool was reset by failure.
+        self.assertNotEqual(pool_id, s.pool.pool_id)
+
+        # No server available.
+        self.assertRaises(
+            ConnectionFailure,
+            c.select_servers, any_server_selector, server_wait_time=0)
 
 
 if __name__ == "__main__":

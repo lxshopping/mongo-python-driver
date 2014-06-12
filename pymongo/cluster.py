@@ -20,6 +20,7 @@ import time
 from pymongo.cluster_description import (update_cluster_description,
                                          ClusterType)
 from pymongo.errors import InvalidOperation, ConnectionFailure
+from pymongo.ismaster import ServerType
 from pymongo.server import Server
 
 
@@ -53,7 +54,7 @@ class Cluster(object):
     def select_servers(self, selector, server_wait_time=5):
         """Return all Servers matching selector, or time out.
 
-        Raises AutoReconnect after maxWaitTime with no matching servers.
+        Raises ConnectionFailure after maxWaitTime with no matching servers.
         """
         with self._lock:
             self._cluster_description.check_compatible()
@@ -124,6 +125,12 @@ class Cluster(object):
     def close(self):
         raise NotImplementedError()
 
+    def request_check_all(self, wait_time=5):
+        """Wake all monitors, wait for at least one to check its server."""
+        with self._lock:
+            self._request_check_all()
+            self._condition.wait(wait_time)
+
     @property
     def description(self):
         return self._cluster_description
@@ -156,7 +163,13 @@ class Cluster(object):
                 self._servers[address] = s
                 s.open()
             else:
-                self._servers[address].description = sd
+                server = self._servers[address]
+                server.description = sd
+                if sd.server_type == ServerType.Unknown:
+                    # If the server is newly disconnected, clear its pool.
+                    # If it was already disconnected, there's no harm
+                    # resetting the pool again.
+                    server.pool.reset()
 
         for address, server in list(self._servers.items()):
             if not self._cluster_description.has_server(address):

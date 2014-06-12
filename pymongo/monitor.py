@@ -38,8 +38,11 @@ def call_ismaster(sock_info):
 
 
 class Monitor(threading.Thread):
-    def __init__(self, address, cluster, pool):
+    def __init__(self, address, cluster, pool, call_ismaster_fn=call_ismaster):
         """Pass a (host, port) pair, a Cluster, and a Pool.
+
+        Optionally override call_ismaster with a function that takes a
+        SocketInfo and returns an IsMaster.
 
         The Cluster is weakly referenced. The Pool must be exclusive to this
         Monitor.
@@ -49,6 +52,7 @@ class Monitor(threading.Thread):
         self._address = address
         self._cluster = weakref.proxy(cluster)
         self._pool = pool
+        self._call_ismaster = call_ismaster_fn
         self._lock = threading.Lock()
         self._condition = threading.Condition(self._lock)
         self._stopped = False
@@ -78,7 +82,7 @@ class Monitor(threading.Thread):
 
                     # TODO: monotonic time.
                     start = time.time()
-                    ismaster_response = call_ismaster(sock_info)
+                    ismaster_response = self._call_ismaster(sock_info)
                     round_trip_time = time.time() - start
 
                     # TODO: average RTTs.
