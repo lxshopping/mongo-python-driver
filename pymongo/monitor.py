@@ -22,7 +22,7 @@ import time
 
 from pymongo import helpers, message
 from pymongo.errors import OperationFailure
-from pymongo.ismaster import IsMasterResponse
+from pymongo.ismaster import IsMaster
 from pymongo.read_preferences import MovingAverage
 from pymongo.server_description import ServerDescription
 
@@ -34,7 +34,7 @@ def call_ismaster(sock_info):
     sock_info.send_message(msg)
     raw_response = sock_info.receive_message(1, request_id)
     result = helpers._unpack_response(raw_response)
-    return IsMasterResponse(result['data'][0])
+    return IsMaster(result['data'][0])
 
 
 class Monitor(threading.Thread):

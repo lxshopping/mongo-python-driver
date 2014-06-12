@@ -18,7 +18,7 @@ import sys
 
 sys.path[0:0] = [""]
 
-from pymongo.ismaster import IsMasterResponse
+from pymongo.ismaster import IsMaster
 from pymongo.read_preferences import MovingAverage
 from pymongo.server_description import ServerDescription, ServerType
 from test import unittest
@@ -27,7 +27,7 @@ address = ('localhost', 27017)
 
 
 def parse_ismaster_response(doc):
-    ismaster_response = IsMasterResponse(doc)
+    ismaster_response = IsMaster(doc)
     return ServerDescription(address, ismaster_response)
 
 
@@ -108,7 +108,7 @@ class TestServerDescription(unittest.TestCase):
         response = {'ok': 1, 'ismaster': True}
         s = ServerDescription(
             address,
-            IsMasterResponse(response),
+            IsMaster(response),
             MovingAverage([1]))
 
         self.assertEqual(1, s.round_trip_time)

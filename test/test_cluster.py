@@ -23,7 +23,7 @@ from pymongo import common
 from pymongo.cluster import Cluster
 from pymongo.cluster_description import ClusterType, ClusterDescription
 from pymongo.errors import ConfigurationError, ConnectionFailure
-from pymongo.ismaster import IsMasterResponse
+from pymongo.ismaster import IsMaster
 from pymongo.read_preferences import MovingAverage
 from pymongo.server_description import ServerDescription, ServerType
 from pymongo.server_selectors import (any_server_selector,
@@ -78,7 +78,7 @@ def create_mock_cluster(seeds=None, set_name=None):
 def got_ismaster(cluster, server_address, ismaster_response):
     server_description = ServerDescription(
         server_address,
-        IsMasterResponse(ismaster_response),
+        IsMaster(ismaster_response),
         MovingAverage([0]))
 
     cluster.on_change(server_description)

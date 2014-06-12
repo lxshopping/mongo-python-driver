@@ -54,25 +54,60 @@ def get_server_type(doc):
         return ServerType.Standalone
 
 
-class IsMasterResponse(object):
+class IsMaster(object):
+    __slots__ = ('_doc', '_server_type')
+
     def __init__(self, doc):
         """Parse an ismaster response from the server."""
-        self.server_type = get_server_type(doc)
-        self.ok = doc.get('ok')
-        self.all_hosts = map(common.partition_node, itertools.chain(
-            doc.get('hosts', []),
-            doc.get('passives', []),
-            doc.get('arbiters', [])))
+        self._server_type = get_server_type(doc)
+        self._doc = doc
 
-        if doc.get('primary'):
-            self.primary = common.partition_node(doc['primary'])
+    @property
+    def server_type(self):
+        return self._server_type
+
+    @property
+    def all_hosts(self):
+        """List of hosts, passives, and arbiters known to this server."""
+        return map(common.partition_node, itertools.chain(
+            self._doc.get('hosts', []),
+            self._doc.get('passives', []),
+            self._doc.get('arbiters', [])))
+
+    @property
+    def tags(self):
+        """Replica set member tags or empty dict."""
+        return self._doc.get('tags', {})
+
+    @property
+    def primary(self):
+        """This server's opinion about who the primary is, or None."""
+        if self._doc.get('primary'):
+            return common.partition_node(self._doc['primary'])
         else:
-            self.primary = None
+            return None
 
-        self.tags = doc.get('tags')
-        self.set_name = doc.get('setName')
-        self.max_bson_size = doc.get('maxBsonObjectSize')
-        self.max_message_size = doc.get('maxMessageSizeBytes')
-        self.max_write_batch_size = doc.get('maxWriteBatchSize')
-        self.min_wire_version = doc.get('minWireVersion')
-        self.max_wire_version = doc.get('maxWireVersion')
+    @property
+    def set_name(self):
+        """Replica set name or None."""
+        return self._doc.get('setName')
+
+    @property
+    def max_bson_size(self):
+        return self._doc.get('maxBsonObjectSize', common.MAX_BSON_SIZE)
+
+    @property
+    def max_message_size(self):
+        return self._doc.get('maxMessageSizeBytes', 2 * self.max_bson_size)
+
+    @property
+    def max_write_batch_size(self):
+        return self._doc.get('maxWriteBatchSize', common.MAX_WRITE_BATCH_SIZE)
+
+    @property
+    def min_wire_version(self):
+        return self._doc.get('minWireVersion', common.MIN_WIRE_VERSION)
+
+    @property
+    def max_wire_version(self):
+        return self._doc.get('maxWireVersion', common.MAX_WIRE_VERSION)

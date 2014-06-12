@@ -14,8 +14,7 @@
 
 """Represent one server in the cluster."""
 
-from pymongo import common
-from pymongo.ismaster import IsMasterResponse, ServerType
+from pymongo.ismaster import IsMaster, ServerType
 
 
 class ServerDescription(object):
@@ -23,22 +22,36 @@ class ServerDescription(object):
 
     :Parameters:
       - `address`: A (host, port) pair
+      - `ismaster`: Optional IsMaster instance
       - `round_trip_times`: Optional MovingAverage
-      - `ismaster_response`: Optional IsMasterResponse
     """
+
+    __slots__ = (
+        '_address', '_server_type', '_all_hosts', '_tags', '_set_name',
+        '_primary', '_max_bson_size', '_max_message_size',
+        '_max_write_batch_size', '_min_wire_version', '_max_wire_version',
+        '_round_trip_times', '_is_writable', '_is_readable')
+
     def __init__(
             self,
             address,
-            ismaster_response=None,
+            ismaster=None,
             round_trip_times=None):
-
         self._address = address
-        if ismaster_response:
-            self._ismaster_response = ismaster_response
-        else:
-            self._ismaster_response = IsMasterResponse({})
+        if not ismaster:
+            ismaster = IsMaster({})
 
-        self._round_trip_times = round_trip_times
+        self._server_type = ismaster.server_type
+        self._all_hosts = ismaster.all_hosts
+        self._tags = ismaster.tags
+        self._set_name = ismaster.set_name
+        self._primary = ismaster.primary
+        self._max_bson_size = ismaster.max_bson_size
+        self._max_message_size = ismaster.max_message_size
+        self._max_write_batch_size = ismaster.max_write_batch_size
+        self._min_wire_version = ismaster.min_wire_version
+        self._max_wire_version = ismaster.max_wire_version
+
         self._is_writable = self.server_type in (
             ServerType.RSPrimary,
             ServerType.Standalone,
@@ -48,13 +61,54 @@ class ServerDescription(object):
             self.server_type == ServerType.RSSecondary
             or self._is_writable)
 
+        self._round_trip_times = round_trip_times
+
     @property
     def address(self):
         return self._address
 
     @property
     def server_type(self):
-        return self._ismaster_response.server_type
+        return self._server_type
+
+    @property
+    def all_hosts(self):
+        """List of hosts, passives, and arbiters known to this server."""
+        return self._all_hosts
+
+    @property
+    def tags(self):
+        return self._tags
+
+    @property
+    def set_name(self):
+        """Replica set name or None."""
+        return self._set_name
+
+    @property
+    def primary(self):
+        """This server's opinion about who the primary is, or None."""
+        return self._primary
+
+    @property
+    def max_bson_size(self):
+        return self._max_bson_size
+
+    @property
+    def max_message_size(self):
+        return self._max_message_size
+
+    @property
+    def max_write_batch_size(self):
+        return self._max_write_batch_size
+
+    @property
+    def min_wire_version(self):
+        return self._min_wire_version
+
+    @property
+    def max_wire_version(self):
+        return self._max_wire_version
 
     @property
     def round_trip_times(self):
@@ -65,48 +119,6 @@ class ServerDescription(object):
     def round_trip_time(self):
         """The current average duration."""
         return self._round_trip_times.get()
-
-    @property
-    def all_hosts(self):
-        """Hosts, passives, and arbiters known to this server."""
-        return self._ismaster_response.all_hosts
-
-    @property
-    def tags(self):
-        return self._ismaster_response.tags
-
-    @property
-    def set_name(self):
-        return self._ismaster_response.set_name
-
-    @property
-    def primary(self):
-        """This server's opinion of who the primary is, if any."""
-        return self._ismaster_response.primary
-
-    @property
-    def max_bson_size(self):
-        return self._ismaster_response.max_bson_size or common.MAX_BSON_SIZE
-
-    @property
-    def max_message_size(self):
-        return (self._ismaster_response.max_message_size
-                or 2 * self.max_bson_size)
-
-    @property
-    def max_write_batch_size(self):
-        return (self._ismaster_response.max_write_batch_size
-                or common.MAX_WRITE_BATCH_SIZE)
-
-    @property
-    def min_wire_version(self):
-        return (self._ismaster_response.min_wire_version
-                or common.MIN_WIRE_VERSION)
-
-    @property
-    def max_wire_version(self):
-        return (self._ismaster_response.max_wire_version
-                or common.MAX_WIRE_VERSION)
 
     @property
     def is_writable(self):
