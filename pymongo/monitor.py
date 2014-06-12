@@ -27,6 +27,16 @@ from pymongo.read_preferences import MovingAverage
 from pymongo.server_description import ServerDescription
 
 
+def call_ismaster(sock_info):
+    """Get an IsMasterResponse, or raise socket.error or PyMongoError."""
+    # TODO: could cache an ismaster message globally.
+    request_id, msg, _ = message.query(0, 'admin.$cmd', 0, -1, {'ismaster': 1})
+    sock_info.send_message(msg)
+    raw_response = sock_info.receive_message(1, request_id)
+    result = helpers._unpack_response(raw_response)
+    return IsMasterResponse(result['data'][0])
+
+
 class Monitor(threading.Thread):
     def __init__(self, address, cluster, pool):
         """Pass a (host, port) pair, a Cluster, and a Pool.
@@ -63,23 +73,15 @@ class Monitor(threading.Thread):
             sock_info = None
             try:
                 try:
-                    # TODO: could cache an ismaster message globally.
-                    request_id, msg, _ = message.query(
-                        0, 'admin.$cmd', 0, -1, {'ismaster': 1})
-
+                    # TODO: a "with" statement.
                     sock_info = self._pool.get_socket()
 
                     # TODO: monotonic time.
                     start = time.time()
-                    sock_info.send_message(msg)
-                    raw_response = sock_info.receive_message(
-                        1, request_id)
-
+                    ismaster_response = call_ismaster(sock_info)
                     round_trip_time = time.time() - start
-                    result = helpers._unpack_response(raw_response)
 
                     # TODO: average RTTs.
-                    ismaster_response = IsMasterResponse(result['data'][0])
                     sd = ServerDescription(
                         self._address,
                         ismaster_response,
