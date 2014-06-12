@@ -28,7 +28,7 @@ from pymongo.server_description import ServerDescription
 
 
 def call_ismaster(sock_info):
-    """Get an IsMasterResponse, or raise socket.error or PyMongoError."""
+    """Get an IsMaster, or raise socket.error or PyMongoError."""
     # TODO: could cache an ismaster message globally.
     request_id, msg, _ = message.query(0, 'admin.$cmd', 0, -1, {'ismaster': 1})
     sock_info.send_message(msg)
