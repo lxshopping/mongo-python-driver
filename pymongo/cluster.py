@@ -159,10 +159,7 @@ class Cluster(object):
         """
         for address, sd in self._cluster_description.server_descriptions:
             if address not in self._servers:
-                m = self._monitor_class(
-                    address,
-                    self,
-                    self._create_pool(address))
+                m = self._monitor_class(sd, self, self._create_pool(address))
 
                 s = Server(sd, self._create_pool(address), m)
                 self._servers[address] = s

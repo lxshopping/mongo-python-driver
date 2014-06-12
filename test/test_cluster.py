@@ -58,8 +58,8 @@ class MockPool(object):
 
 
 class MockMonitor(object):
-    def __init__(self, address, cluster, pool):
-        self._address = address
+    def __init__(self, server_description, cluster, pool):
+        self._server_description = server_description
         self._cluster = cluster
 
     def open(self):

@@ -37,8 +37,13 @@ def call_ismaster(sock_info):
 
 
 class Monitor(threading.Thread):
-    def __init__(self, address, cluster, pool, call_ismaster_fn=call_ismaster):
-        """Pass a (host, port) pair, a Cluster, and a Pool.
+    def __init__(
+            self,
+            server_description,
+            cluster,
+            pool,
+            call_ismaster_fn=call_ismaster):
+        """Pass an initial ServerDescription, a Cluster, and a Pool.
 
         Optionally override call_ismaster with a function that takes a
         SocketInfo and returns an IsMaster.
@@ -48,7 +53,7 @@ class Monitor(threading.Thread):
         """
         super(Monitor, self).__init__()
         self.daemon = True  # Python 2.6's way to do setDaemon(True).
-        self._address = address
+        self._server_description = server_description
         self._cluster = weakref.proxy(cluster)
         self._pool = pool
         self._call_ismaster_fn = call_ismaster_fn
@@ -90,12 +95,13 @@ class Monitor(threading.Thread):
         # server's pool. If a server was once connected, change its type
         # to Unknown only after retrying once.
         retry = self._succeeded
+        address = self._server_description.address
         server_description = self._call_ismaster_once()
         if server_description:
             self._succeeded = True
             return server_description
         else:
-            self._cluster.reset_pool(self._address)
+            self._cluster.reset_pool(address)
             if retry:
                 server_description = self._call_ismaster_once()
                 if server_description:
@@ -105,7 +111,7 @@ class Monitor(threading.Thread):
         self._succeeded = False
 
         # ServerType defaults to Unknown.
-        return ServerDescription(self._address)
+        return ServerDescription(address)
 
     def _call_ismaster_once(self):
         try:
@@ -121,7 +127,7 @@ class Monitor(threading.Thread):
 
             # TODO: average RTTs.
             sd = ServerDescription(
-                self._address,
+                self._server_description.address,
                 ismaster_response,
                 MovingAverage([round_trip_time]))
 
