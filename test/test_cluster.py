@@ -58,7 +58,7 @@ class MockPool(object):
 
 
 class MockMonitor(object):
-    def __init__(self, server_description, cluster, pool):
+    def __init__(self, server_description, cluster, pool, cluster_settings):
         self._server_description = server_description
         self._cluster = cluster
 
@@ -77,18 +77,13 @@ address = ('a', 27017)
 
 def create_mock_cluster(seeds=None, set_name=None, monitor_class=MockMonitor):
     partitioned_seeds = map(common.partition_node, seeds or ['a'])
-    settings = ClusterSettings(partitioned_seeds, set_name=set_name)
-    cluster_description = ClusterDescription(
-        settings.get_cluster_type(),
-        settings.get_server_descriptions(),
-        settings.set_name)
-
-    c = Cluster(
-        cluster_description,
+    cluster_settings = ClusterSettings(
+        partitioned_seeds,
+        set_name=set_name,
         pool_class=MockPool,
-        monitor_class=monitor_class,
-        condition_class=threading.Condition)
+        monitor_class=monitor_class)
 
+    c = Cluster(cluster_settings)
     c.open()
     return c
 

@@ -18,27 +18,24 @@ import threading
 import time
 
 from pymongo.cluster_description import (update_cluster_description,
-                                         ClusterType)
+                                         ClusterType, ClusterDescription)
 from pymongo.errors import InvalidOperation, ConnectionFailure
 from pymongo.server import Server
 
 
 class Cluster(object):
     """Monitor a cluster of one or more servers."""
-    def __init__(
-            self,
-            cluster_description,
-            pool_class,
-            monitor_class,
-            condition_class):
-        self._cluster_description = cluster_description
-        self._pool_class = pool_class
-        self._monitor_class = monitor_class
-        self._condition_class = condition_class
+    def __init__(self, cluster_settings):
+        self._settings = cluster_settings
+        cluster_description = ClusterDescription(
+            cluster_settings.get_cluster_type(),
+            cluster_settings.get_server_descriptions(),
+            cluster_settings.set_name)
 
+        self._cluster_description = cluster_description
         self._opened = False
         self._lock = threading.Lock()
-        self._condition = self._condition_class(self._lock)
+        self._condition = self._settings.condition_class(self._lock)
         self._servers = {}
 
     def open(self):
@@ -159,7 +156,8 @@ class Cluster(object):
         """
         for address, sd in self._cluster_description.server_descriptions:
             if address not in self._servers:
-                m = self._monitor_class(sd, self, self._create_pool(address))
+                m = self._settings.monitor_class(
+                    sd, self, self._create_pool(address), self._settings)
 
                 s = Server(sd, self._create_pool(address), m)
                 self._servers[address] = s
@@ -174,7 +172,7 @@ class Cluster(object):
 
     def _create_pool(self, address):
         # TODO: Need PoolSettings, SocketSettings, and SSLContext classes.
-        return self._pool_class(
+        return self._settings.pool_class(
             address,
             max_size=100,
             net_timeout=None,

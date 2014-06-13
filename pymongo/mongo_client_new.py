@@ -24,7 +24,6 @@ from pymongo import (helpers,
                      pool,
                      uri_parser)
 from pymongo.cluster import Cluster
-from pymongo.cluster_description import ClusterDescription
 from pymongo.errors import (ConfigurationError)
 from pymongo.settings import ClusterSettings
 
@@ -33,7 +32,13 @@ class MongoClientNew(object):
     """Connection to one or more MongoDB servers.
     """
 
-    def __init__(self, host='localhost', port=27017, replicaSet=None):
+    def __init__(
+        self,
+        host='localhost',
+        port=27017,
+        replicaSet=None,
+        heartbeatFrequencyMS=None
+    ):
         """TODO: docstring"""
         if isinstance(host, string_type):
             host = [host]
@@ -48,23 +53,19 @@ class MongoClientNew(object):
         if not seeds:
             raise ConfigurationError("need to specify at least one host")
 
-        self._settings = ClusterSettings(seeds, set_name=replicaSet)
+        cluster_settings = ClusterSettings(
+            seeds=seeds,
+            set_name=replicaSet,
+            heartbeatFrequencyMS=heartbeatFrequencyMS,
+            pool_class=pool.Pool,
+            monitor_class=monitor.Monitor,
+            condition_class=threading.Condition)
 
         # TODO: parse URI, socket timeouts, ssl args, auth, use_greenlets,
         # pool_class, document_class, pool options, condition_class,
         # default database.
 
-        cluster_description = ClusterDescription(
-            self._settings.get_cluster_type(),
-            self._settings.get_server_descriptions(),
-            self._settings.set_name)
-
-        self._cluster = Cluster(
-            cluster_description,
-            pool_class=pool.Pool,
-            monitor_class=monitor.Monitor,
-            condition_class=threading.Condition)
-
+        self._cluster = Cluster(cluster_settings)
         self._cluster.open()
 
     def proto_command(self, database_name, commandname, must_use_master):

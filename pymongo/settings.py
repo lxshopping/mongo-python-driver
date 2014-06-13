@@ -13,16 +13,41 @@
 # permissions and limitations under the License.
 
 """Represent MongoClient's configuration."""
+
+import threading
+
+from pymongo import common, monitor, pool
 from pymongo.cluster_description import ClusterType
 from pymongo.server_description import ServerDescription
 
 
 class ClusterSettings(object):
-    def __init__(self, seeds=None, set_name=None):
-        """Take a list of (host, port) pairs and optional replica set name."""
-        self._seeds = seeds or [('localhost', 27017)]
+    def __init__(
+        self,
+        seeds=None,
+        set_name=None,
+        heartbeatFrequencyMS=None,
+        pool_class=None,
+        monitor_class=monitor.Monitor,
+        condition_class=threading.Condition
+    ):
+        """Represent MongoClient's configuration.
 
+        Take a list of (host, port) pairs, optional replica set name,
+        optional frequency in seconds for calling ismaster on servers.
+        """
+        self._seeds = seeds or [('localhost', 27017)]
         self._set_name = set_name
+
+        # Convert from milliseconds to seconds.
+        f = common.validate_timeout_or_none(
+            'heartbeatFrequencyMS', heartbeatFrequencyMS)
+
+        self._frequency = f or common.HEARTBEAT_FREQUENCY
+
+        self._pool_class = pool_class or pool.Pool
+        self._monitor_class = monitor_class or monitor.Monitor
+        self._condition_class = condition_class or threading.Condition
         self._direct = (len(self._seeds) == 1 and not set_name)
 
     @property
@@ -33,6 +58,23 @@ class ClusterSettings(object):
     @property
     def set_name(self):
         return self._set_name
+
+    @property
+    def heartbeat_frequency(self):
+        """How often to call ismaster on servers, in seconds."""
+        return self._frequency
+
+    @property
+    def pool_class(self):
+        return self._pool_class
+
+    @property
+    def monitor_class(self):
+        return self._monitor_class
+
+    @property
+    def condition_class(self):
+        return self._condition_class
 
     @property
     def direct(self):

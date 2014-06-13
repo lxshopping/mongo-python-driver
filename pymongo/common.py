@@ -47,6 +47,9 @@ MAX_WRITE_BATCH_SIZE = 1000
 MIN_SUPPORTED_WIRE_VERSION = 0
 MAX_SUPPORTED_WIRE_VERSION = 2
 
+# Default frequency to call ismaster on servers, in seconds.
+HEARTBEAT_FREQUENCY = 10
+
 # mongod/s 2.6 and above return code 59 when a
 # command doesn't exist. mongod versions previous
 # to 2.6 and mongos 2.4.x return no error code

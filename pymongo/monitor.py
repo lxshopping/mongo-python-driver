@@ -47,8 +47,12 @@ class Monitor(threading.Thread):
             server_description,
             cluster,
             pool,
+            cluster_settings,
             call_ismaster_fn=call_ismaster):
-        """Pass an initial ServerDescription, a Cluster, and a Pool.
+        """Class to monitor a MongoDB server on a background thread.
+
+        Pass an initial ServerDescription, a Cluster, a Pool, and a
+        ClusterSettings.
 
         Optionally override call_ismaster with a function that takes a
         SocketInfo and returns (IsMaster, round_trip_time).
@@ -61,9 +65,10 @@ class Monitor(threading.Thread):
         self._server_description = server_description
         self._cluster = weakref.proxy(cluster)
         self._pool = pool
+        self._frequency = cluster_settings.heartbeat_frequency
         self._call_ismaster_fn = call_ismaster_fn
         self._lock = threading.Lock()
-        self._condition = threading.Condition(self._lock)
+        self._condition = cluster_settings.condition_class(self._lock)
         self._stopped = False
 
     def open(self):
@@ -95,9 +100,8 @@ class Monitor(threading.Thread):
                 # Cluster was garbage collected.
                 self.close()
             else:
-                # TODO: heartbeatFrequencyMS.
                 with self._lock:
-                    self._condition.wait(5)
+                    self._condition.wait(self._frequency)
 
 
 def call_ismaster_with_retry(
