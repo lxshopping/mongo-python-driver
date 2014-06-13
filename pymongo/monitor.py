@@ -21,7 +21,7 @@ import weakref
 import time
 
 from pymongo import helpers, message
-from pymongo.ismaster import IsMaster
+from pymongo.ismaster import IsMaster, ServerType
 from pymongo.read_preferences import MovingAverage
 from pymongo.server_description import ServerDescription
 
@@ -59,7 +59,6 @@ class Monitor(threading.Thread):
         self._call_ismaster_fn = call_ismaster_fn
         self._lock = threading.Lock()
         self._condition = threading.Condition(self._lock)
-        self._succeeded = False
         self._stopped = False
 
     def open(self):
@@ -80,8 +79,13 @@ class Monitor(threading.Thread):
         # TODO: minHeartbeatFrequencyMS.
         while not self._stopped:
             try:
-                server_description = self._call_ismaster_with_retry()
-                self._cluster.on_change(server_description)
+                self._server_description = call_ismaster_with_retry(
+                    self._server_description,
+                    self._cluster,
+                    self._pool,
+                    self._call_ismaster_fn)
+
+                self._cluster.on_change(self._server_description)
             except weakref.ReferenceError:
                 # Cluster was garbage collected.
                 self.close()
@@ -90,56 +94,59 @@ class Monitor(threading.Thread):
                 with self._lock:
                     self._condition.wait(5)
 
-    def _call_ismaster_with_retry(self):
-        # According to the spec, if an ismaster call fails we reset the
-        # server's pool. If a server was once connected, change its type
-        # to Unknown only after retrying once.
-        retry = self._succeeded
-        address = self._server_description.address
-        server_description = self._call_ismaster_once()
-        if server_description:
-            self._succeeded = True
-            return server_description
-        else:
-            self._cluster.reset_pool(address)
-            if retry:
-                server_description = self._call_ismaster_once()
-                if server_description:
-                    self._succeeded = True
-                    return server_description
 
-        self._succeeded = False
+def call_ismaster_with_retry(
+        server_description,
+        cluster,
+        pool,
+        call_ismaster_fn):
+    # According to the spec, if an ismaster call fails we reset the
+    # server's pool. If a server was once connected, change its type
+    # to Unknown only after retrying once.
+    retry = server_description.server_type != ServerType.Unknown
+    address = server_description.address
+    server_description = call_ismaster_once(address, pool, call_ismaster_fn)
+    if server_description:
+        return server_description
+    else:
+        cluster.reset_pool(address)
+        if retry:
+            server_description = call_ismaster_once(
+                address, pool, call_ismaster_fn)
 
-        # ServerType defaults to Unknown.
-        return ServerDescription(address)
+            if server_description:
+                return server_description
 
-    def _call_ismaster_once(self):
-        try:
-            sock_info = self._pool.get_socket()
-        except socket.error:
-            return None
+    # ServerType defaults to Unknown.
+    return ServerDescription(address)
 
-        try:
-            # TODO: monotonic time.
-            start = time.time()
-            ismaster_response = self._call_ismaster_fn(sock_info)
-            round_trip_time = time.time() - start
 
-            # TODO: average RTTs.
-            sd = ServerDescription(
-                self._server_description.address,
-                ismaster_response,
-                MovingAverage([round_trip_time]))
+def call_ismaster_once(address, pool, call_ismaster_fn):
+    try:
+        sock_info = pool.get_socket()
+    except socket.error:
+        return None
 
-            return sd
-        except socket.error:
-            sock_info.close()
-            return None
-        except Exception:
-            # TODO: This is unexpected. Log.
-            return None
-        finally:
-            self._pool.maybe_return_socket(sock_info)
+    try:
+        # TODO: monotonic time.
+        start = time.time()
+        ismaster_response = call_ismaster_fn(sock_info)
+        round_trip_time = time.time() - start
+
+        # TODO: average RTTs.
+        sd = ServerDescription(
+            address, ismaster_response, MovingAverage([round_trip_time]))
+
+        return sd
+    except socket.error:
+        sock_info.close()
+        return None
+    except Exception:
+        # TODO: This is unexpected. Log.
+        return None
+    finally:
+        pool.maybe_return_socket(sock_info)
+
 
 MONITORS = set()
 
