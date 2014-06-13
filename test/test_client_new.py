@@ -18,7 +18,7 @@ import sys
 
 sys.path[0:0] = [""]
 
-from pymongo import MongoClient
+from pymongo import MongoClient, ReadPreference
 from pymongo.mongo_client_new import MongoClientNew
 from test import host, port, unittest
 
@@ -26,12 +26,25 @@ from test import host, port, unittest
 class TestClientNew(unittest.TestCase):
     def test_buildinfo(self):
         c = MongoClientNew(host, port)
-        assert 'version' in c.proto_command('admin', 'buildinfo', True)
+        assert 'version' in c.admin.command('buildinfo')
 
-    def test_buildinfo_readonly(self):
-        # Assuming there's an RS member on port 27018.
-        c = MongoClientNew(host, 27018)
-        assert 'version' in c.proto_command('admin', 'buildinfo', False)
+    def test_ismaster(self):
+        legacy = MongoClient(host, port)
+        name = legacy.admin.command('ismaster').get('setName')
+        c = MongoClientNew(
+            ['localhost:27017', 'localhost:27018'],
+            replicaSet=name)
+
+        primary_response = c.admin.command('ismaster')
+        self.assertTrue(primary_response['ismaster'])
+
+        # 'ismaster' does not obey read preference, so hack it.
+        secondary_response = c.admin['$cmd'].find_one(
+            {'ismaster': 1},
+            read_preference=ReadPreference.SECONDARY)
+
+        # Make sure we really executed ismaster on a secondary.
+        self.assertTrue(secondary_response.get('secondary'))
 
     def test_find(self):
         legacy = MongoClient(host, port)

@@ -19,14 +19,13 @@ import threading
 
 from bson.py3compat import (string_type)
 from pymongo import (database,
-                     helpers,
-                     message,
                      monitor,
                      pool,
                      uri_parser, ReadPreference)
 from pymongo.cluster import Cluster
 from pymongo.errors import (ConfigurationError)
-from pymongo.server_selectors import writable_server_selector
+from pymongo.server_selectors import (writable_server_selector,
+                                      secondary_server_selector)
 from pymongo.settings import ClusterSettings
 
 
@@ -77,28 +76,6 @@ class MongoClientNew(object):
         self.write_concern = {}
         self.document_class = dict
 
-    def proto_command(self, database_name, commandname, must_use_master):
-        """Just prove we can talk to a server."""
-        spec = {commandname: 1}
-        request_id, msg, _ = message.query(
-            0, database_name + '.$cmd', 0, -1, spec)
-
-        # A selector takes a list of ServerDescriptions and returns a list
-        # of suitable ServerDescriptions.
-        if must_use_master:
-            def selector(sds):
-                return [sd for sd in sds if sds.is_writable]
-        else:
-            def selector(sds):
-                return [sd for sd in sds if sds.is_readable]
-
-        server = random.choice(self._cluster.select_servers(selector))
-        raw_response = server.send_message_with_response(msg, request_id)
-        response = helpers._unpack_response(raw_response)['data'][0]
-        msg = "command %r failed: %%s" % spec
-        helpers._check_command_response(response, None, msg)
-        return response
-
     # TODO: Remove. Database, Collection, etc. should use Cluster.
     def _send_message_with_response(
             self,
@@ -111,15 +88,14 @@ class MongoClientNew(object):
         :Parameters:
           - `message`: (request_id, data) pair making up the message to send
         """
-        servers = self._cluster.select_servers(writable_server_selector)
+        request_id, data, max_doc_size = msg
 
-        # TODO: Mongos HA.
-        assert len(servers) == 1
-        server = servers[0]
-
-        if len(msg) == 3:
-            request_id, data, max_doc_size = msg
-
+        # TODO: real read preferences.
+        if read_preference == ReadPreference.PRIMARY:
+            servers = self._cluster.select_servers(writable_server_selector)
+        else:
+            servers = self._cluster.select_servers(secondary_server_selector)
+        server = random.choice(servers)
         response = server.send_message_with_response(data, request_id)
         return server.description.address, (response, None, None)
 

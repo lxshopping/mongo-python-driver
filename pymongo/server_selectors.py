@@ -14,6 +14,8 @@
 
 """Criteria to select some ServerDescriptions out of a list."""
 
+from pymongo.ismaster import ServerType
+
 
 def any_server_selector(server_descriptions):
     return server_descriptions
@@ -21,3 +23,8 @@ def any_server_selector(server_descriptions):
 
 def writable_server_selector(server_descriptions):
     return [s for s in server_descriptions if s.is_writable]
+
+
+def secondary_server_selector(server_descriptions):
+    return [s for s in server_descriptions
+            if s.server_type == ServerType.RSSecondary]
