@@ -18,6 +18,7 @@ import sys
 
 sys.path[0:0] = [""]
 
+from pymongo import MongoClient
 from pymongo.mongo_client_new import MongoClientNew
 from test import host, port, unittest
 
@@ -31,6 +32,14 @@ class TestClientNew(unittest.TestCase):
         # Assuming there's an RS member on port 27018.
         c = MongoClientNew(host, 27018)
         assert 'version' in c.proto_command('admin', 'buildinfo', False)
+
+    def test_find(self):
+        legacy = MongoClient(host, port)
+        legacy.test.test.drop()
+        legacy.test.test.insert({'_id': 1})
+        c = MongoClientNew(host, port)
+        docs = list(c.test.test.find())
+        self.assertEqual([{'_id': 1}], docs)
 
 
 if __name__ == "__main__":

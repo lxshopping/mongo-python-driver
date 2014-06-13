@@ -18,13 +18,15 @@ import random
 import threading
 
 from bson.py3compat import (string_type)
-from pymongo import (helpers,
+from pymongo import (database,
+                     helpers,
                      message,
                      monitor,
                      pool,
-                     uri_parser)
+                     uri_parser, ReadPreference)
 from pymongo.cluster import Cluster
 from pymongo.errors import (ConfigurationError)
+from pymongo.server_selectors import writable_server_selector
 from pymongo.settings import ClusterSettings
 
 
@@ -68,6 +70,13 @@ class MongoClientNew(object):
         self._cluster = Cluster(cluster_settings)
         self._cluster.open()
 
+        # TODO: these are here to fake the old MongoClient's API for the sake
+        # of existing Database, Collection, and Cursor.
+        self.read_preference = ReadPreference.PRIMARY
+        self.uuid_subtype = 4
+        self.write_concern = {}
+        self.document_class = dict
+
     def proto_command(self, database_name, commandname, must_use_master):
         """Just prove we can talk to a server."""
         spec = {commandname: 1}
@@ -89,3 +98,49 @@ class MongoClientNew(object):
         msg = "command %r failed: %%s" % spec
         helpers._check_command_response(response, None, msg)
         return response
+
+    # TODO: Remove. Database, Collection, etc. should use Cluster.
+    def _send_message_with_response(
+            self,
+            msg,
+            read_preference=ReadPreference.PRIMARY,
+            exhaust=False):
+        """Send a message to Mongo and return the response.
+
+
+        :Parameters:
+          - `message`: (request_id, data) pair making up the message to send
+        """
+        servers = self._cluster.select_servers(writable_server_selector)
+
+        # TODO: Mongos HA.
+        assert len(servers) == 1
+        server = servers[0]
+
+        if len(msg) == 3:
+            request_id, data, max_doc_size = msg
+
+        response = server.send_message_with_response(data, request_id)
+        return server.description.address, (response, None, None)
+
+    def __getattr__(self, name):
+        """Get a database by name.
+
+        Raises :class:`~pymongo.errors.InvalidName` if an invalid
+        database name is used.
+
+        :Parameters:
+          - `name`: the name of the database to get
+        """
+        return database.Database(self, name)
+
+    def __getitem__(self, name):
+        """Get a database by name.
+
+        Raises :class:`~pymongo.errors.InvalidName` if an invalid
+        database name is used.
+
+        :Parameters:
+          - `name`: the name of the database to get
+        """
+        return self.__getattr__(name)
