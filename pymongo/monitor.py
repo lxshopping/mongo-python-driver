@@ -27,13 +27,18 @@ from pymongo.server_description import ServerDescription
 
 
 def call_ismaster(sock_info):
-    """Get an IsMaster, or raise socket.error or PyMongoError."""
+    """Return (IsMaster, round_trip_time).
+
+    Can raise socket.error or PyMongoError.
+    """
+    # TODO: monotonic time.
+    start = time.time()
     # TODO: could cache an ismaster message globally.
     request_id, msg, _ = message.query(0, 'admin.$cmd', 0, -1, {'ismaster': 1})
     sock_info.send_message(msg)
     raw_response = sock_info.receive_message(1, request_id)
     result = helpers._unpack_response(raw_response)
-    return IsMaster(result['data'][0])
+    return IsMaster(result['data'][0]), time.time() - start
 
 
 class Monitor(threading.Thread):
@@ -46,7 +51,7 @@ class Monitor(threading.Thread):
         """Pass an initial ServerDescription, a Cluster, and a Pool.
 
         Optionally override call_ismaster with a function that takes a
-        SocketInfo and returns an IsMaster.
+        SocketInfo and returns (IsMaster, round_trip_time).
 
         The Cluster is weakly referenced. The Pool must be exclusive to this
         Monitor.
@@ -100,42 +105,52 @@ def call_ismaster_with_retry(
         cluster,
         pool,
         call_ismaster_fn):
+    """Call ismaster once or twice. Reset connection pool on error.
+
+    Returns a ServerDescription.
+    """
     # According to the spec, if an ismaster call fails we reset the
     # server's pool. If a server was once connected, change its type
     # to Unknown only after retrying once.
     retry = server_description.server_type != ServerType.Unknown
-    address = server_description.address
-    server_description = call_ismaster_once(address, pool, call_ismaster_fn)
-    if server_description:
-        return server_description
+    new_server_description = call_ismaster_once(
+        server_description, pool, call_ismaster_fn)
+
+    if new_server_description:
+        return new_server_description
     else:
-        cluster.reset_pool(address)
+        cluster.reset_pool(server_description.address)
         if retry:
             server_description = call_ismaster_once(
-                address, pool, call_ismaster_fn)
+                server_description, pool, call_ismaster_fn)
 
             if server_description:
                 return server_description
 
     # ServerType defaults to Unknown.
-    return ServerDescription(address)
+    return ServerDescription(server_description.address)
 
 
-def call_ismaster_once(address, pool, call_ismaster_fn):
+def call_ismaster_once(server_description, pool, call_ismaster_fn):
+    """A single attempt to call ismaster.
+
+    Returns a ServerDescription, or None on error.
+    """
     try:
         sock_info = pool.get_socket()
     except socket.error:
         return None
 
     try:
-        # TODO: monotonic time.
-        start = time.time()
-        ismaster_response = call_ismaster_fn(sock_info)
-        round_trip_time = time.time() - start
+        ismaster_response, round_trip_time = call_ismaster_fn(sock_info)
+        old_rtts = server_description.round_trip_times
+        if old_rtts:
+            new_rtts = old_rtts.clone_with(round_trip_time)
+        else:
+            new_rtts = MovingAverage([round_trip_time])
 
-        # TODO: average RTTs.
         sd = ServerDescription(
-            address, ismaster_response, MovingAverage([round_trip_time]))
+            server_description.address, ismaster_response, new_rtts)
 
         return sd
     except socket.error:

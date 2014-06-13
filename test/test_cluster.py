@@ -171,6 +171,23 @@ class TestSingleServerCluster(unittest.TestCase):
         disconnected(c, address)
         self.assertEqual(ServerType.Unknown, get_type(c, 'a'))
 
+    def test_round_trip_time(self):
+        self.round_trip_time = 1
+
+        def call_ismaster(_):
+            return IsMaster({'ok': 1}), self.round_trip_time
+
+        monitor_class = partial(Monitor, call_ismaster_fn=call_ismaster)
+        c = create_mock_cluster(monitor_class=monitor_class)
+        s = c.select_servers(writable_server_selector)[0]
+        self.assertEqual(1, s.description.round_trip_time)
+
+        self.round_trip_time = 3
+        c.request_check_all()
+
+        # Average of 1 and 3.
+        self.assertEqual(2, s.description.round_trip_time)
+
 
 class TestMultiServerCluster(unittest.TestCase):
     def test_unexpected_host(self):
@@ -408,7 +425,7 @@ class TestClusterErrors(unittest.TestCase):
         def call_ismaster(_):
             self.ismaster_count += 1
             if self.ismaster_count in (1, 3):
-                return IsMaster({'ok': 1})
+                return IsMaster({'ok': 1}), 0
             else:
                 raise socket.error()
 
