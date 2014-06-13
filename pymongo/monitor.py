@@ -65,7 +65,7 @@ class Monitor(threading.Thread):
         self._server_description = server_description
         self._cluster = weakref.proxy(cluster)
         self._pool = pool
-        self._frequency = cluster_settings.heartbeat_frequency
+        self._settings = cluster_settings
         self._call_ismaster_fn = call_ismaster_fn
         self._lock = threading.Lock()
         self._condition = cluster_settings.condition_class(self._lock)
@@ -101,9 +101,10 @@ class Monitor(threading.Thread):
             else:
                 # Spec requires at least 10ms between ismaster calls.
                 min_wait = 0.01
+                frequency = self._settings.heartbeat_frequency
                 with self._lock:
                     start = time.time()  # TODO: monotonic.
-                    self._condition.wait(max(0, self._frequency - min_wait))
+                    self._condition.wait(max(0, frequency - min_wait))
                     wait_time = time.time() - start
                     if wait_time < min_wait:
                         # request_check() was called before min_wait passed.
