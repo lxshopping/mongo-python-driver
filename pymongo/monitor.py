@@ -86,7 +86,6 @@ class Monitor(threading.Thread):
             self._condition.notify()
 
     def run(self):
-        # TODO: minHeartbeatFrequencyMS.
         while not self._stopped:
             try:
                 self._server_description = call_ismaster_with_retry(
@@ -97,11 +96,18 @@ class Monitor(threading.Thread):
 
                 self._cluster.on_change(self._server_description)
             except weakref.ReferenceError:
-                # Cluster was garbage collected.
+                # Cluster was garbage-collected.
                 self.close()
             else:
+                # Spec requires at least 10ms between ismaster calls.
+                min_wait = 0.01
                 with self._lock:
-                    self._condition.wait(self._frequency)
+                    start = time.time()  # TODO: monotonic.
+                    self._condition.wait(max(0, self._frequency - min_wait))
+                    wait_time = time.time() - start
+                    if wait_time < min_wait:
+                        # request_check() was called before min_wait passed.
+                        time.sleep(min_wait - wait_time)
 
 
 def call_ismaster_with_retry(
