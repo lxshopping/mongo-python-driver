@@ -61,7 +61,7 @@ class MongoClientNew(object):
             monitor_class=monitor.Monitor,
             condition_class=threading.Condition)
 
-        # TODO: parse URI, socket timeouts, ssl args, auth, use_greenlets,
+        # TODO: parse URI, socket timeouts, ssl args, auth,
         # pool_class, document_class, pool options, condition_class,
         # default database.
 
