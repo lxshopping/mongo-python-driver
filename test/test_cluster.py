@@ -178,17 +178,17 @@ class TestSingleServerCluster(unittest.TestCase):
         self.assertEqual(ServerType.Unknown, get_type(c, 'a'))
 
     def test_round_trip_time(self):
-        self.round_trip_time = 1
+        round_trip_time = 1
 
-        def call_ismaster(_):
-            return IsMaster({'ok': 1}), self.round_trip_time
+        class TestMonitor(Monitor):
+            def _check_with_socket(self, sock_info):
+                return IsMaster({'ok': 1}), round_trip_time
 
-        monitor_class = partial(Monitor, call_ismaster_fn=call_ismaster)
-        c = create_mock_cluster(monitor_class=monitor_class)
+        c = create_mock_cluster(monitor_class=TestMonitor)
         s = c.select_servers(writable_server_selector)[0]
         self.assertEqual(1, s.description.round_trip_time)
 
-        self.round_trip_time = 3
+        round_trip_time = 3
         c.request_check_all()
 
         # Average of 1 and 3.
@@ -563,11 +563,11 @@ class TestClusterErrors(unittest.TestCase):
     # Errors when calling ismaster.
 
     def test_pool_reset(self):
-        def call_ismaster(_):
-            raise socket.error()
+        class TestMonitor(Monitor):
+            def _check_with_socket(self, sock_info):
+                raise socket.error()
 
-        monitor_class = partial(Monitor, call_ismaster_fn=call_ismaster)
-        c = create_mock_cluster(monitor_class=monitor_class)
+        c = create_mock_cluster(monitor_class=TestMonitor)
         s = c.get_server_by_address(address)
         pool_id = s.pool.pool_id
 
@@ -577,26 +577,26 @@ class TestClusterErrors(unittest.TestCase):
 
     def test_ismaster_retry(self):
         # ismaster succeeds at first, then raises socket error, then succeeds.
-        self.ismaster_count = 0
+        ismaster_count = [0]
 
-        def call_ismaster(_):
-            self.ismaster_count += 1
-            if self.ismaster_count in (1, 3):
-                return IsMaster({'ok': 1}), 0
-            else:
-                raise socket.error()
+        class TestMonitor(Monitor):
+            def _check_with_socket(self, sock_info):
+                ismaster_count[0] += 1
+                if ismaster_count[0] in (1, 3):
+                    return IsMaster({'ok': 1}), 0
+                else:
+                    raise socket.error()
 
-        monitor_class = partial(Monitor, call_ismaster_fn=call_ismaster)
-        c = create_mock_cluster(monitor_class=monitor_class)
+        c = create_mock_cluster(monitor_class=TestMonitor)
 
         # Await first ismaster call.
         s = c.select_servers(writable_server_selector)[0]
-        self.assertEqual(1, self.ismaster_count)
+        self.assertEqual(1, ismaster_count[0])
         self.assertEqual(ServerType.Standalone, s.description.server_type)
 
         # Second ismaster call, then immediately the third.
         c.request_check_all()
-        self.assertEqual(3, self.ismaster_count)
+        self.assertEqual(3, ismaster_count[0])
         self.assertEqual(ServerType.Standalone, get_type(c, 'a'))
 
 
