@@ -25,7 +25,9 @@ from functools import partial
 from pymongo import common
 from pymongo.cluster import Cluster
 from pymongo.cluster_description import ClusterType, ClusterDescription
-from pymongo.errors import ConfigurationError, ConnectionFailure
+from pymongo.errors import (ConfigurationError,
+                            ConnectionFailure,
+                            InvalidOperation)
 from pymongo.ismaster import IsMaster
 from pymongo.monitor import Monitor
 from pymongo.read_preferences import MovingAverage
@@ -160,6 +162,10 @@ class TestSingleServerCluster(unittest.TestCase):
             # select_servers() returns it.
             s = c.select_servers(writable_server_selector)[0]
             self.assertEqual(server_type, s.description.server_type)
+
+    def test_reopen(self):
+        c = create_mock_cluster()
+        self.assertRaises(InvalidOperation, c.open)
 
     def test_unavailable_seed(self):
         c = create_mock_cluster()
