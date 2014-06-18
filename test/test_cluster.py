@@ -74,6 +74,11 @@ class MockMonitor(object):
         pass
 
 
+class SetNameDiscoverySettings(ClusterSettings):
+    def get_cluster_type(self):
+        return ClusterType.ReplicaSetNoPrimary
+
+
 address = ('a', 27017)
 
 
@@ -255,6 +260,17 @@ class TestMultiServerCluster(unittest.TestCase):
         self.assertEqual(ServerType.Mongos, get_type(c, 'a'))
         self.assertEqual(ServerType.Mongos, get_type(c, 'b'))
 
+    def test_non_mongos_server(self):
+        c = create_mock_cluster(['a', 'b'])
+        got_ismaster(c, ('a', 27017), {
+            'ok': 1,
+            'ismaster': True,
+            'msg': 'isdbgrid'})
+
+        # Standalone is removed from sharded cluster description.
+        got_ismaster(c, ('b', 27017), {'ok': 1})
+        self.assertFalse(c.has_server(('b', 27017)))
+
     def test_rs_discovery(self):
         c = create_mock_cluster(set_name='rs')
 
@@ -295,12 +311,15 @@ class TestMultiServerCluster(unittest.TestCase):
             'ok': 1,
             'ismaster': True,
             'setName': 'rs',
-            'hosts': ['b', 'c', 'd']})
+            'hosts': ['b', 'c', 'd', 'e']})
 
-        self.assertEqual(3, len(c.description.server_descriptions))
+        self.assertEqual(4, len(c.description.server_descriptions))
         self.assertEqual(ServerType.RSSecondary, get_type(c, 'b'))
         self.assertEqual(ServerType.Unknown, get_type(c, 'c'))
         self.assertEqual(ServerType.RSPrimary, get_type(c, 'd'))
+
+        # 'e' is new.
+        self.assertEqual(ServerType.Unknown, get_type(c, 'e'))
         self.assertEqual(ClusterType.ReplicaSetWithPrimary,
                          c.description.cluster_type)
 
@@ -313,10 +332,147 @@ class TestMultiServerCluster(unittest.TestCase):
             'hosts': ['a', 'b', 'c']})
 
         # We don't add A back.
-        self.assertEqual(3, len(c.description.server_descriptions))
+        self.assertEqual(4, len(c.description.server_descriptions))
         self.assertEqual(ServerType.RSSecondary, get_type(c, 'b'))
         self.assertEqual(ServerType.RSSecondary, get_type(c, 'c'))
         self.assertEqual(ServerType.RSPrimary, get_type(c, 'd'))
+
+    def test_discover_set_name_from_primary(self):
+        # Discovering a replica set without the setName supplied by the user
+        # is not yet supported by MongoClient, but Cluster can do it.
+        cluster_settings = SetNameDiscoverySettings(
+            seeds=[address],
+            pool_class=MockPool,
+            monitor_class=MockMonitor)
+
+        c = Cluster(cluster_settings)
+        self.assertEqual(c.description.set_name, None)
+        self.assertEqual(c.description.cluster_type,
+                         ClusterType.ReplicaSetNoPrimary)
+
+        got_ismaster(c, address, {
+            'ok': 1,
+            'ismaster': True,
+            'setName': 'rs',
+            'hosts': ['a']})
+
+        self.assertEqual(c.description.set_name, 'rs')
+        self.assertEqual(c.description.cluster_type,
+                         ClusterType.ReplicaSetWithPrimary)
+
+    def test_discover_set_name_from_secondary(self):
+        # Discovering a replica set without the setName supplied by the user
+        # is not yet supported by MongoClient, but Cluster can do it.
+        cluster_settings = SetNameDiscoverySettings(
+            seeds=[address],
+            pool_class=MockPool,
+            monitor_class=MockMonitor)
+
+        c = Cluster(cluster_settings)
+        self.assertEqual(c.description.set_name, None)
+        self.assertEqual(c.description.cluster_type,
+                         ClusterType.ReplicaSetNoPrimary)
+
+        got_ismaster(c, address, {
+            'ok': 1,
+            'ismaster': False,
+            'secondary': True,
+            'setName': 'rs',
+            'hosts': ['a']})
+
+        self.assertEqual(c.description.set_name, 'rs')
+        self.assertEqual(c.description.cluster_type,
+                         ClusterType.ReplicaSetNoPrimary)
+
+    def test_primary_disconnect(self):
+        c = create_mock_cluster(set_name='rs')
+        got_ismaster(c, address, {
+            'ok': 1,
+            'ismaster': True,
+            'setName': 'rs',
+            'hosts': ['a']})
+
+        self.assertEqual(ClusterType.ReplicaSetWithPrimary,
+                         c.description.cluster_type)
+
+        disconnected(c, address)
+        self.assertTrue(c.has_server(address))  # Not removed.
+        self.assertEqual(ClusterType.ReplicaSetNoPrimary,
+                         c.description.cluster_type)
+
+    def test_primary_becomes_standalone(self):
+        c = create_mock_cluster(set_name='rs')
+        got_ismaster(c, address, {
+            'ok': 1,
+            'ismaster': True,
+            'setName': 'rs',
+            'hosts': ['a']})
+
+        self.assertEqual(ClusterType.ReplicaSetWithPrimary,
+                         c.description.cluster_type)
+
+        # An administrator restarts primary as standalone.
+        got_ismaster(c, address, {'ok': 1})
+        self.assertFalse(c.has_server(address))
+        self.assertEqual(ClusterType.ReplicaSetNoPrimary,
+                         c.description.cluster_type)
+
+    def test_primary_wrong_set_name(self):
+        c = create_mock_cluster(set_name='rs')
+        got_ismaster(c, address, {
+            'ok': 1,
+            'ismaster': True,
+            'setName': 'wrong',
+            'hosts': ['a']})
+
+        self.assertFalse(c.has_server(address))
+        self.assertEqual(ClusterType.ReplicaSetNoPrimary,
+                         c.description.cluster_type)
+
+    def test_secondary_wrong_set_name(self):
+        c = create_mock_cluster(set_name='rs')
+        got_ismaster(c, address, {
+            'ok': 1,
+            'ismaster': False,
+            'secondary': True,
+            'setName': 'wrong',
+            'hosts': ['a']})
+
+        self.assertFalse(c.has_server(address))
+        self.assertEqual(ClusterType.ReplicaSetNoPrimary,
+                         c.description.cluster_type)
+
+    def test_secondary_wrong_set_name_with_primary(self):
+        c = create_mock_cluster(['a', 'b'], set_name='rs')
+
+        # Find the primary normally.
+        got_ismaster(c, address, {
+            'ok': 1,
+            'ismaster': True,
+            'setName': 'rs',
+            'hosts': ['a', 'b']})
+
+        self.assertEqual(ClusterType.ReplicaSetWithPrimary,
+                         c.description.cluster_type)
+
+        self.assertTrue(c.has_server(('b', 27017)))
+        got_ismaster(c, ('b', 27017), {
+            'ok': 1,
+            'ismaster': False,
+            'secondary': True,
+            'setName': 'wrong',
+            'hosts': ['a', 'b']})
+
+        # Secondary removed.
+        self.assertFalse(c.has_server(('b', 27017)))
+        self.assertEqual(ClusterType.ReplicaSetWithPrimary,
+                         c.description.cluster_type)
+
+    def test_non_rs_member(self):
+        c = create_mock_cluster(['a', 'b'], set_name='rs')
+        self.assertTrue(c.has_server(('b', 27017)))
+        got_ismaster(c, ('b', 27017), {'ok': 1})  # Standalone is removed.
+        self.assertFalse(c.has_server(('b', 27017)))
 
     def test_wire_version(self):
         c = create_mock_cluster(set_name='rs')

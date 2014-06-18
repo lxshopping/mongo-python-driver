@@ -36,28 +36,38 @@ class TestServerDescription(unittest.TestCase):
         # Default, no ismaster_response.
         s = ServerDescription(address)
         self.assertEqual(ServerType.Unknown, s.server_type)
+        self.assertFalse(s.is_writable)
+        self.assertFalse(s.is_readable)
 
     def test_mongos(self):
         s = parse_ismaster_response({'ok': 1, 'msg': 'isdbgrid'})
         self.assertEqual(ServerType.Mongos, s.server_type)
+        self.assertTrue(s.is_writable)
+        self.assertTrue(s.is_readable)
 
     def test_primary(self):
         s = parse_ismaster_response(
             {'ok': 1, 'ismaster': True, 'setName': 'rs'})
 
         self.assertEqual(ServerType.RSPrimary, s.server_type)
+        self.assertTrue(s.is_writable)
+        self.assertTrue(s.is_readable)
 
     def test_secondary(self):
         s = parse_ismaster_response(
             {'ok': 1, 'ismaster': False, 'secondary': True, 'setName': 'rs'})
 
         self.assertEqual(ServerType.RSSecondary, s.server_type)
+        self.assertFalse(s.is_writable)
+        self.assertTrue(s.is_readable)
 
     def test_arbiter(self):
         s = parse_ismaster_response(
             {'ok': 1, 'ismaster': False, 'arbiterOnly': True, 'setName': 'rs'})
 
         self.assertEqual(ServerType.RSArbiter, s.server_type)
+        self.assertFalse(s.is_writable)
+        self.assertFalse(s.is_readable)
 
     def test_other(self):
         s = parse_ismaster_response(
@@ -73,11 +83,47 @@ class TestServerDescription(unittest.TestCase):
             'setName': 'rs'})
 
         self.assertEqual(ServerType.RSOther, s.server_type)
+        self.assertFalse(s.is_writable)
+        self.assertFalse(s.is_readable)
 
     def test_ghost(self):
         s = parse_ismaster_response({'ok': 1, 'isreplicaset': True})
 
         self.assertEqual(ServerType.RSGhost, s.server_type)
+        self.assertFalse(s.is_writable)
+        self.assertFalse(s.is_readable)
+
+    def test_fields(self):
+        s = parse_ismaster_response({
+            'ok': 1,
+            'ismaster': False,
+            'secondary': True,
+            'primary': 'a:27017',
+            'tags': {'a': 'foo', 'b': 'baz'},
+            'maxMessageSizeBytes': 1,
+            'maxBsonObjectSize': 2,
+            'maxWriteBatchSize': 3,
+            'minWireVersion': 4,
+            'maxWireVersion': 5,
+            'setName': 'rs'})
+
+        self.assertEqual(ServerType.RSSecondary, s.server_type)
+        self.assertEqual(('a', 27017), s.primary)
+        self.assertEqual({'a': 'foo', 'b': 'baz'}, s.tags)
+        self.assertEqual(1, s.max_message_size)
+        self.assertEqual(2, s.max_bson_size)
+        self.assertEqual(3, s.max_write_batch_size)
+        self.assertEqual(4, s.min_wire_version)
+        self.assertEqual(5, s.max_wire_version)
+
+    def test_default_max_message_size(self):
+        s = parse_ismaster_response({
+            'ok': 1,
+            'ismaster': True,
+            'maxBsonObjectSize': 2})
+
+        # Twice max_bson_size.
+        self.assertEqual(4, s.max_message_size)
 
     def test_standalone(self):
         s = parse_ismaster_response({'ok': 1, 'ismaster': True})
@@ -86,10 +132,14 @@ class TestServerDescription(unittest.TestCase):
         # Mongod started with --slave.
         s = parse_ismaster_response({'ok': 1, 'ismaster': False})
         self.assertEqual(ServerType.Standalone, s.server_type)
+        self.assertTrue(s.is_writable)
+        self.assertTrue(s.is_readable)
 
     def test_ok_false(self):
         s = parse_ismaster_response({'ok': 0, 'ismaster': True})
         self.assertEqual(ServerType.Unknown, s.server_type)
+        self.assertFalse(s.is_writable)
+        self.assertFalse(s.is_readable)
 
     def test_all_hosts(self):
         s = parse_ismaster_response({
