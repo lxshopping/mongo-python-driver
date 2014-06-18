@@ -45,9 +45,6 @@ class ClusterDescription(object):
             (s.address, s)
             for s in server_descriptions)
 
-    def get_server_description(self, address):
-        return self._server_descriptions.get(address)
-
     def has_server(self, address):
         return address in self._server_descriptions
 
