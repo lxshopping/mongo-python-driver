@@ -71,9 +71,6 @@ class Monitor(threading.Thread):
         self._condition = cluster_settings.condition_class(self._lock)
         self._stopped = False
 
-    def open(self):
-        self.start()
-
     def close(self):
         self._stopped = True
         self._pool.reset()

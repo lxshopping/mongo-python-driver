@@ -64,7 +64,7 @@ class MockMonitor(object):
         self._server_description = server_description
         self._cluster = cluster
 
-    def open(self):
+    def start(self):
         pass
 
     def request_check(self):

@@ -22,7 +22,7 @@ class Server(object):
         self._monitor = monitor
 
     def open(self):
-        self._monitor.open()
+        self._monitor.start()
 
     def close(self):
         self._monitor.close()
