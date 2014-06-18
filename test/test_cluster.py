@@ -24,7 +24,7 @@ from functools import partial
 
 from pymongo import common
 from pymongo.cluster import Cluster
-from pymongo.cluster_description import ClusterType, ClusterDescription
+from pymongo.cluster_description import ClusterType
 from pymongo.errors import (ConfigurationError,
                             ConnectionFailure,
                             InvalidOperation)
